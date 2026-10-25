@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/db";
+import { currentUser, hasRole } from "@/lib/auth";
 import { completeConnection } from "@/lib/zoho/client";
 
 export const dynamic = "force-dynamic";
@@ -14,6 +15,7 @@ export async function GET(req: NextRequest) {
     return res;
   };
 
+  if (!hasRole(await currentUser(), "admin")) return back(`error=${encodeURIComponent("Only an admin can connect Zoho.")}`);
   const err = url.searchParams.get("error");
   if (err) return back(`error=${encodeURIComponent(`Zoho declined: ${err}`)}`);
   const code = url.searchParams.get("code");

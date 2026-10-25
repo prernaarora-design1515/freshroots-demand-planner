@@ -91,3 +91,36 @@ describe("edge cases", () => {
     expect(r.action).toBe("REVIEW");
   });
 });
+
+describe("open purchase orders are netted off", () => {
+  const base = seedInput();
+  const run = (openPo: Record<string, number>) =>
+    Object.fromEntries(evaluate({ ...base, openPo }).map((r) => [r.skuId, r]));
+
+  it("partial open PO reduces the order but keeps the flags", () => {
+    const out = run({ SKU001: 300 });
+    expect(out.SKU001).toMatchObject({ action: "REORDER_NOW", grossQty: 750, openPoQty: 300, recommendedQty: 450 });
+    expect(out.SKU001.flags).toContain("STOCKOUT_RISK");
+    expect(out.SKU001.ruleSummary).toMatch(/order 450 more/);
+  });
+
+  it("open PO at or above the rule qty -> COVERED, nothing to order", () => {
+    const out = run({ SKU003: 300, SKU013: 500 });
+    expect(out.SKU003).toMatchObject({ action: "COVERED", grossQty: 300, recommendedQty: 0 });
+    expect(out.SKU013).toMatchObject({ action: "COVERED", recommendedQty: 0 });
+    expect(out.SKU003.coverWithOpenPo).toBeGreaterThan(out.SKU003.weeksOfCover);
+  });
+
+  it("open PO on an overstocked SKU adds a 'consider delaying' note", () => {
+    const out = run({ SKU006: 100 });
+    expect(out.SKU006.action).toBe("PAUSE");
+    expect(out.SKU006.borderline).toMatch(/consider delaying/);
+  });
+
+  it("no open POs -> identical to before", () => {
+    const a = evaluate(base);
+    const b = evaluate({ ...base, openPo: {} });
+    expect(b).toEqual(a);
+    expect(a.every((r) => r.grossQty === r.recommendedQty)).toBe(true);
+  });
+});

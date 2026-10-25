@@ -8,6 +8,10 @@
  *    weeks-of-cover checks. The high-demand check compares raw sales.
  *  - Festival status is taken from the month of the inventory as-of date
  *    (the month we are planning for), looked up in the calendar.
+ *  - Open purchase orders (Zoho drafts/issued POs not yet received, plus any
+ *    uploaded open_purchase_orders.csv) are netted off the reorder quantity.
+ *    The flags still use stock on hand, as in Raghav's rules: an open PO
+ *    doesn't put stock on the shelf until it arrives.
  */
 
 export const RULES = {
@@ -21,7 +25,7 @@ export const RULES = {
 } as const;
 
 export type Flag = "HIGH_DEMAND" | "STOCKOUT_RISK" | "OVERSTOCK_RISK";
-export type Action = "REORDER_NOW" | "REORDER" | "PAUSE" | "REVIEW" | "NO_ACTION";
+export type Action = "REORDER_NOW" | "REORDER" | "COVERED" | "PAUSE" | "REVIEW" | "NO_ACTION";
 
 export interface SkuInput {
   skuId: string;
@@ -35,6 +39,8 @@ export interface EvaluateInput {
   sales: { skuId: string; week: string; unitsSold: number }[];
   onHand: Record<string, number>;
   isFestival: boolean;
+  /** Units already on open or draft purchase orders, per SKU. */
+  openPo?: Record<string, number>;
 }
 
 export interface SkuResult {
@@ -49,9 +55,12 @@ export interface SkuResult {
   minWeeks: number;
   maxWeeks: number;
   onHand: number;
+  openPoQty: number;
+  coverWithOpenPo: number; // weeks of cover once open POs arrive
   flags: Flag[];
   action: Action;
-  recommendedQty: number;
+  grossQty: number; // rules' quantity before netting open POs
+  recommendedQty: number; // what to order now = max(0, gross - open POs)
   borderline: string | null;
   needsJudgment: boolean;
   ruleSummary: string;
@@ -75,6 +84,7 @@ export function evaluate(input: EvaluateInput): SkuResult[] {
       .sort((a, b) => a.week.localeCompare(b.week))
       .map((s) => s.unitsSold);
     const onHand = input.onHand[sku.skuId] ?? 0;
+    const openPoQty = Math.max(0, Math.round(input.openPo?.[sku.skuId] ?? 0));
     const isHigh = sku.perishability.toLowerCase() === "high";
     const { minWeeks, maxWeeks } = isHigh ? RULES.highPerish : RULES.lowPerish;
 
@@ -98,6 +108,8 @@ export function evaluate(input: EvaluateInput): SkuResult[] {
       minWeeks,
       maxWeeks,
       onHand,
+      openPoQty,
+      coverWithOpenPo: expected > 0 ? round1((onHand + openPoQty) / expected) : 999,
     };
 
     // New launches / thin history: the rules can't be trusted -> Raghav decides.
@@ -106,10 +118,13 @@ export function evaluate(input: EvaluateInput): SkuResult[] {
         ...base,
         flags: [],
         action: "REVIEW",
+        grossQty: 0,
         recommendedQty: 0,
         borderline: null,
         needsJudgment: true,
-        ruleSummary: `Only ${history.length} week(s) of sales history (rules need ${RULES.minHistoryWeeks}). Treat as a new launch: planner judgment required.`,
+        ruleSummary:
+          `Only ${history.length} week(s) of sales history (rules need ${RULES.minHistoryWeeks}). Treat as a new launch: planner judgment required.` +
+          (openPoQty ? ` ${openPoQty} units already on open POs.` : ""),
       };
     }
 
@@ -153,18 +168,38 @@ export function evaluate(input: EvaluateInput): SkuResult[] {
       if (flags.includes("OVERSTOCK_RISK") !== overNoUplift)
         notes.push(`overstock flag changes with the festival uplift (${round1(wocNoUplift)} weeks without it)`);
     }
+    // Net open purchase orders off the order quantity.
+    const grossQty = qty;
+    const ruleAction = action;
+    let netQty = qty;
+    if (qty > 0 && openPoQty > 0) {
+      netQty = Math.max(0, qty - openPoQty);
+      if (netQty === 0) action = "COVERED";
+    }
+    if (action === "PAUSE" && openPoQty > 0)
+      notes.push(`${openPoQty} units are still on open POs and would take cover to ${base.coverWithOpenPo} weeks: consider delaying them`);
     const borderline = notes.length ? notes.join("; ") : null;
 
     return {
       ...base,
       flags,
       action,
-      recommendedQty: qty,
+      grossQty,
+      recommendedQty: netQty,
       borderline,
       needsJudgment,
-      ruleSummary: summarise(base, flags, action, qty, std, input.isFestival, isHigh),
+      ruleSummary:
+        summarise(base, flags, ruleAction, grossQty, std, input.isFestival, isHigh) +
+        netNote(grossQty, openPoQty, netQty, action, base.coverWithOpenPo),
     };
   });
+}
+
+function netNote(gross: number, open: number, net: number, action: Action, coverAfter: number) {
+  if (!gross || !open) return "";
+  if (action === "COVERED")
+    return ` Open POs already cover it (${open} units on order, ${coverAfter} weeks of cover once received): no new order needed.`;
+  return ` ${open} units already on open POs, so order ${net} more (${gross} − ${open}).`;
 }
 
 function summarise(

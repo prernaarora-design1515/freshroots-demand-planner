@@ -1,7 +1,9 @@
 import { headers } from "next/headers";
-import { desc } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
+import { redirect } from "next/navigation";
+import { currentUser, hasRole, loginRequiredToView } from "@/lib/auth";
 import { getDb } from "@/db";
-import { skuSuppliers, zohoPushes } from "@/db/schema";
+import { runOpenPos, runs, skuSuppliers, zohoPushes } from "@/db/schema";
 import { getConnection, isZohoConfigured, redirectUri, zohoConfig } from "@/lib/zoho/client";
 import ZohoActions from "@/components/ZohoActions";
 
@@ -9,6 +11,9 @@ export const dynamic = "force-dynamic";
 
 export default async function ZohoPage({ searchParams }: { searchParams: Promise<{ error?: string; connected?: string }> }) {
   const { error, connected } = await searchParams;
+  const user = await currentUser();
+  if (!user && loginRequiredToView()) redirect("/login");
+  const isAdmin = hasRole(user, "admin");
   const h = await headers();
   const host = h.get("x-forwarded-host") ?? h.get("host") ?? "";
   const proto = h.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https");
@@ -19,12 +24,16 @@ export default async function ZohoPage({ searchParams }: { searchParams: Promise
   let conn = null;
   let pushes: (typeof zohoPushes.$inferSelect)[] = [];
   let supplierCount = 0;
+  let openLines: (typeof runOpenPos.$inferSelect)[] = [];
+  let lastRun: (typeof runs.$inferSelect) | null = null;
   let dbError: string | null = null;
   try {
     const db = await getDb();
     conn = await getConnection(db);
     pushes = await db.select().from(zohoPushes).orderBy(desc(zohoPushes.id)).limit(15);
     supplierCount = (await db.select().from(skuSuppliers)).length;
+    [lastRun] = await db.select().from(runs).orderBy(desc(runs.id)).limit(1);
+    if (lastRun) openLines = await db.select().from(runOpenPos).where(eq(runOpenPos.runId, lastRun.id));
   } catch (e) {
     dbError = (e as Error).message;
   }
@@ -69,7 +78,11 @@ export default async function ZohoPage({ searchParams }: { searchParams: Promise
           </div>
         )}
         <div className="mt-4">
-          <ZohoActions connected={!!conn} configured={configured} supplierCount={supplierCount} />
+          {isAdmin ? (
+            <ZohoActions connected={!!conn} configured={configured} supplierCount={supplierCount} />
+          ) : (
+            <p className="text-xs text-gray-500">Only an admin can connect, sync or disconnect Zoho.</p>
+          )}
         </div>
       </div>
 
@@ -97,11 +110,40 @@ export default async function ZohoPage({ searchParams }: { searchParams: Promise
       </div>
 
       <div className="rounded-xl border border-gray-200 bg-white p-5">
+        <h2 className="text-sm font-semibold text-gray-900">Open POs netted off the latest run{lastRun ? ` (#${lastRun.id})` : ""}</h2>
+        <p className="mt-1 text-xs text-gray-500">
+          Each run reads POs that can still deliver stock (drafts, issued, partially received) and subtracts the undelivered quantity from what the rules recommend.
+        </p>
+        {openLines.length ? (
+          <table className="mt-3 w-full text-sm">
+            <thead className="text-left text-xs uppercase text-gray-500">
+              <tr><th className="py-1.5">PO</th><th>Source</th><th>Status</th><th>SKU</th><th>Open qty</th><th>Expected</th></tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {openLines.map((o) => (
+                <tr key={o.id}>
+                  <td className="py-1.5">{o.poNumber}</td>
+                  <td>{o.source === "zoho" ? "Zoho" : "CSV"}</td>
+                  <td>{o.status}</td>
+                  <td>{o.skuId}</td>
+                  <td className="tabular-nums">{o.openQty}</td>
+                  <td className="text-gray-600">{o.expectedDate ?? "–"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : (
+          <p className="mt-2 text-sm text-gray-500">{lastRun ? "No open POs at the latest run." : "No runs yet."}</p>
+        )}
+        {lastRun?.openPoNote && <p className="mt-2 text-xs text-red-700">{lastRun.openPoNote}</p>}
+      </div>
+
+      <div className="rounded-xl border border-gray-200 bg-white p-5">
         <h2 className="text-sm font-semibold text-gray-900">Recent sends</h2>
         {pushes.length ? (
           <table className="mt-3 w-full text-sm">
             <thead className="text-left text-xs uppercase text-gray-500">
-              <tr><th className="py-1.5">When</th><th>Run</th><th>Supplier</th><th>Lines</th><th>Qty</th><th>Result</th></tr>
+              <tr><th className="py-1.5">When</th><th>Run</th><th>Supplier</th><th>Lines</th><th>Qty</th><th>By</th><th>Result</th></tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
               {pushes.map((p) => (
@@ -111,6 +153,7 @@ export default async function ZohoPage({ searchParams }: { searchParams: Promise
                   <td>{p.supplierName}</td>
                   <td>{p.lineCount}</td>
                   <td className="tabular-nums">{p.totalQty}</td>
+                  <td className="text-gray-600">{p.createdBy ?? "–"}</td>
                   <td>{p.status === "created" ? <span className="text-emerald-700">Draft {p.poNumber}</span> : <span className="text-red-700">Failed: {p.error}</span>}</td>
                 </tr>
               ))}

@@ -8,6 +8,8 @@ export const FILES = {
   current_inventory: ["SKU_ID", "Location", "Units_On_Hand", "As_Of_Date"],
   calendar: ["Year", "Month", "Year_Month", "Is_Festival_Month"],
   sku_suppliers: ["SKU_ID", "Supplier_ID", "Supplier_Name", "Unit_Cost", "Lead_Time_Days"],
+  // Optional: open POs that are not in Zoho. Expected_Date and Status columns are optional.
+  open_purchase_orders: ["PO_Number", "SKU_ID", "Open_Qty"],
 } as const;
 
 export type FileKey = keyof typeof FILES;

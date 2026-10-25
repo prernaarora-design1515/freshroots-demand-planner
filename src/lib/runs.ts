@@ -6,6 +6,7 @@ import {
   distributors,
   inventory,
   recommendations,
+  runOpenPos,
   runs,
   skuSuppliers,
   skus,
@@ -13,14 +14,16 @@ import {
 } from "@/db/schema";
 import { evaluate } from "./rules";
 import { explainWithGemini } from "./explain";
+import { collectOpenPos } from "./openPos";
 
 /** Runs Raghav's rules on what's in the database, stores the run, then asks Gemini for explanations. */
-export async function createRun(db: DB, opts: { withAi?: boolean } = {}) {
-  const [skuRows, salesRows, invRows, calRows] = await Promise.all([
+export async function createRun(db: DB, opts: { withAi?: boolean; createdBy?: string } = {}) {
+  const [skuRows, salesRows, invRows, calRows, supRows] = await Promise.all([
     db.select().from(skus),
     db.select().from(weeklySales),
     db.select().from(inventory),
     db.select().from(calendar),
+    db.select().from(skuSuppliers),
   ]);
   if (!skuRows.length || !salesRows.length || !invRows.length)
     throw new Error("Load sku_master, weekly_sales and current_inventory before running.");
@@ -31,13 +34,27 @@ export async function createRun(db: DB, opts: { withAi?: boolean } = {}) {
   const isFestival = calRows.find((c) => c.yearMonth === asOfDate.slice(0, 7))?.isFestivalMonth ?? false;
   const latestWeek = salesRows.map((s) => s.week).sort().at(-1)!;
 
-  const results = evaluate({ skus: skuRows, sales: salesRows, onHand, isFestival });
+  const open = await collectOpenPos(db);
+  const results = evaluate({ skus: skuRows, sales: salesRows, onHand, isFestival, openPo: open.perSku });
   const flagged = results.filter((r) => r.action !== "NO_ACTION").length;
+  const cost = new Map(supRows.map((s) => [s.skuId, s.unitCost]));
 
   const [run] = await db
     .insert(runs)
-    .values({ asOfDate, latestWeek, isFestival, skuCount: results.length, flaggedCount: flagged, aiStatus: "pending" })
+    .values({
+      asOfDate,
+      latestWeek,
+      isFestival,
+      skuCount: results.length,
+      flaggedCount: flagged,
+      aiStatus: "pending",
+      openPoSource: open.source,
+      openPoNote: open.note,
+      createdBy: opts.createdBy ?? null,
+    })
     .returning();
+
+  if (open.lines.length) await db.insert(runOpenPos).values(open.lines.map((l) => ({ ...l, runId: run.id })));
 
   await db.insert(recommendations).values(
     results.map((r) => ({
@@ -53,6 +70,10 @@ export async function createRun(db: DB, opts: { withAi?: boolean } = {}) {
       flags: r.flags.join(","),
       action: r.action,
       recommendedQty: r.recommendedQty,
+      grossQty: r.grossQty,
+      openPoQty: r.openPoQty,
+      onHand: r.onHand,
+      unitCost: cost.get(r.skuId) ?? null,
       borderline: r.borderline,
       needsJudgment: r.needsJudgment,
       ruleSummary: r.ruleSummary,
@@ -94,13 +115,19 @@ export async function runDetail(db: DB, runId: number) {
   if (!run) return null;
   const recs = await db.select().from(recommendations).where(eq(recommendations.runId, runId));
   const ids = recs.map((r) => r.id);
-  const [skuRows, distRows, decRows, salesRows, supRows] = await Promise.all([
+  const [skuRows, distRows, decRows, salesRows, supRows, openRows] = await Promise.all([
     db.select().from(skus),
     db.select().from(distributors),
     ids.length ? db.select().from(decisions).where(inArray(decisions.recommendationId, ids)) : Promise.resolve([]),
     db.select().from(weeklySales),
     db.select().from(skuSuppliers),
+    db.select().from(runOpenPos).where(eq(runOpenPos.runId, runId)),
   ]);
+  const openBySku = new Map<string, { poNumber: string; status: string; openQty: number; source: string; expectedDate: string | null }[]>();
+  for (const o of openRows) {
+    if (!openBySku.has(o.skuId)) openBySku.set(o.skuId, []);
+    openBySku.get(o.skuId)!.push({ poNumber: o.poNumber, status: o.status, openQty: o.openQty, source: o.source, expectedDate: o.expectedDate });
+  }
   const supMap = new Map(supRows.map((s) => [s.skuId, s]));
   const skuMap = new Map(skuRows.map((s) => [s.skuId, s]));
   const distMap = new Map(distRows.map((d) => [d.distributorId, d]));
@@ -111,7 +138,7 @@ export async function runDetail(db: DB, runId: number) {
     history.get(s.skuId)!.push({ week: s.week, units: s.unitsSold });
   }
 
-  const order = { REORDER_NOW: 0, REVIEW: 1, REORDER: 2, PAUSE: 3, NO_ACTION: 4 } as Record<string, number>;
+  const order = { REORDER_NOW: 0, REVIEW: 1, REORDER: 2, COVERED: 3, PAUSE: 4, NO_ACTION: 5 } as Record<string, number>;
   const rows = recs
     .map((r) => {
       const sku = skuMap.get(r.skuId);
@@ -128,6 +155,7 @@ export async function runDetail(db: DB, runId: number) {
         region: dist?.region ?? "",
         supplierName: supMap.get(r.skuId)?.supplierName ?? null,
         history: (history.get(r.skuId) ?? []).slice(-12),
+        openPos: openBySku.get(r.skuId) ?? [],
         decision: d
           ? {
               status: d.status,
@@ -135,6 +163,7 @@ export async function runDetail(db: DB, runId: number) {
               reasonCode: d.reasonCode,
               note: d.note,
               decidedAt: d.decidedAt.toISOString(),
+              decidedBy: d.decidedBy,
               zohoPoNumber: d.zohoPoNumber,
             }
           : null,
@@ -142,7 +171,7 @@ export async function runDetail(db: DB, runId: number) {
     })
     .sort((a, b) => order[a.action] - order[b.action] || a.skuId.localeCompare(b.skuId));
 
-  return { run: { ...run, createdAt: run.createdAt.toISOString() }, rows };
+  return { run: { ...run, createdAt: run.createdAt.toISOString() }, rows, openPoLineCount: openRows.length };
 }
 
 export type RunDetail = NonNullable<Awaited<ReturnType<typeof runDetail>>>;

@@ -52,6 +52,21 @@ http
     }
     if (p === "/oauth/v2/token/revoke") return send(res, 200, { status: "success" });
     if (p === "/__state") return send(res, 200, { ...state, tokens: state.tokens.size });
+    // Test helpers: mark a PO line partly received, or set a PO's status.
+    if (p === "/__receive") {
+      const po = state.purchaseorders.find((x) => x.purchaseorder_number === url.searchParams.get("po"));
+      if (!po) return send(res, 404, { error: "no po" });
+      po.line_items[0].quantity_received = Number(url.searchParams.get("qty"));
+      po.status = "open";
+      po.received_status = "partially_received";
+      return send(res, 200, po);
+    }
+    if (p === "/__status") {
+      const po = state.purchaseorders.find((x) => x.purchaseorder_number === url.searchParams.get("po"));
+      if (!po) return send(res, 404, { error: "no po" });
+      po.status = url.searchParams.get("status");
+      return send(res, 200, po);
+    }
 
     // --- inventory API ---
     if (!p.startsWith("/inventory/v1/")) return send(res, 404, { code: 5, message: "Invalid URL" });
@@ -85,6 +100,21 @@ http
       const it = { item_id: id(), ...json };
       state.items.push(it);
       return send(res, 201, { code: 0, message: "The item has been added.", item: it });
+    }
+    if (path === "/purchaseorders" && req.method === "GET")
+      return send(res, 200, {
+        code: 0,
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        purchaseorders: state.purchaseorders.map(({ line_items, ...po }) => ({ ...po, vendor_name: state.contacts.find((c) => c.contact_id === po.vendor_id)?.contact_name })),
+        page_context: page,
+      });
+    if (path.startsWith("/purchaseorders/") && req.method === "GET") {
+      const po = state.purchaseorders.find((x) => x.purchaseorder_id === path.split("/")[2]);
+      if (!po) return send(res, 404, { code: 1004, message: "PO not found" });
+      return send(res, 200, {
+        code: 0,
+        purchaseorder: { ...po, line_items: po.line_items.map((li) => ({ ...li, sku: state.items.find((i) => i.item_id === li.item_id)?.sku })) },
+      });
     }
     if (path === "/purchaseorders" && req.method === "POST") {
       if (!state.contacts.some((c) => c.contact_id === json.vendor_id && c.contact_type === "vendor"))

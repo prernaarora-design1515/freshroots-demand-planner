@@ -1,5 +1,5 @@
 import type { DB } from "@/db";
-import { calendar, distributors, inventory, skuSuppliers, skus, weeklySales } from "@/db/schema";
+import { calendar, distributors, inventory, openPosCsv, skuSuppliers, skus, weeklySales } from "@/db/schema";
 import { FILES, parseCsv, toInt, type FileKey } from "./csv";
 
 export type CsvBundle = Partial<Record<FileKey, string>>;
@@ -68,12 +68,20 @@ export async function ingest(db: DB, files: CsvBundle) {
     };
   });
 
+  const opens = parsed.open_purchase_orders?.map((r, i) => {
+    const openQty = toInt(r.Open_Qty, `open_purchase_orders row ${i + 2}`);
+    if (openQty < 0) throw new Error(`open_purchase_orders row ${i + 2}: Open_Qty can't be negative`);
+    if (!r.PO_Number || !r.SKU_ID) throw new Error(`open_purchase_orders row ${i + 2}: PO_Number and SKU_ID are required`);
+    return { poNumber: r.PO_Number, skuId: r.SKU_ID, openQty, expectedDate: r.Expected_Date || null, status: r.Status || null };
+  });
+
   if (dist) { await db.delete(distributors); await insertChunked(dist, (c) => db.insert(distributors).values(c)); }
   if (sku) { await db.delete(skus); await insertChunked(sku, (c) => db.insert(skus).values(c)); }
   if (sales) { await db.delete(weeklySales); await insertChunked(sales, (c) => db.insert(weeklySales).values(c)); }
   if (inv) { await db.delete(inventory); await insertChunked(inv, (c) => db.insert(inventory).values(c)); }
   if (cal) { await db.delete(calendar); await insertChunked(cal, (c) => db.insert(calendar).values(c)); }
   if (sup) { await db.delete(skuSuppliers); await insertChunked(sup, (c) => db.insert(skuSuppliers).values(c)); }
+  if (opens) { await db.delete(openPosCsv); await insertChunked(opens, (c) => db.insert(openPosCsv).values(c)); }
 
   return Object.fromEntries(keys.map((k) => [k, parsed[k]!.length])) as Record<FileKey, number>;
 }

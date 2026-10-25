@@ -5,6 +5,8 @@ import { REASON_CODES } from "@/lib/decisions";
 import Dashboard from "@/components/Dashboard";
 import LoadSampleButton from "@/components/LoadSampleButton";
 import { getConnection } from "@/lib/zoho/client";
+import { redirect } from "next/navigation";
+import { currentUser, hasRole, loginRequiredToView } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -20,6 +22,9 @@ async function load(runParam?: string) {
 
 export default async function Home({ searchParams }: { searchParams: Promise<{ run?: string }> }) {
   const { run: runParam } = await searchParams;
+  const user = await currentUser();
+  if (!user && loginRequiredToView()) redirect("/login");
+  const canAct = hasRole(user, "planner");
 
   let data: Awaited<ReturnType<typeof load>>;
   try {
@@ -54,12 +59,16 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ r
         <p className="mt-2 text-sm text-gray-600">
           Load the Freshroots seed export (15 SKUs, 16 weeks) or upload your own SAP CSVs, then the rules run automatically.
         </p>
+        {!canAct ? (
+          <p className="mt-4 text-sm text-gray-600"><Link href="/login" className="underline">Sign in</Link> as a planner to load data.</p>
+        ) : (
         <div className="mt-5 flex items-start justify-center gap-3">
           <LoadSampleButton />
           <Link href="/upload" className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-800 hover:bg-gray-50">
             Upload CSVs
           </Link>
         </div>
+        )}
       </div>
     );
   }
@@ -70,6 +79,8 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ r
       runs={runs.map((r) => ({ id: r.id, createdAt: r.createdAt.toISOString(), flaggedCount: r.flaggedCount }))}
       reasonCodes={REASON_CODES}
       zohoConnected={zohoConnected}
+      canAct={canAct}
+      signedIn={Boolean(user)}
     />
   );
 }

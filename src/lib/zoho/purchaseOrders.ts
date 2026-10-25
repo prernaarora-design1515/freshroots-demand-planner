@@ -113,7 +113,7 @@ const istDate = (d = new Date()) =>
  * Sends approved lines (approved or overridden, qty > 0, not yet sent) from one run
  * to Zoho as DRAFT purchase orders, one per supplier. Procurement reviews and issues them in Zoho.
  */
-export async function pushRunToZoho(db: DB, runId: number) {
+export async function pushRunToZoho(db: DB, runId: number, createdBy?: string) {
   const recs = await db.select().from(recommendations).where(eq(recommendations.runId, runId));
   if (!recs.length) throw new ZohoError(`Run #${runId} not found.`);
   const decs = await db
@@ -166,7 +166,7 @@ export async function pushRunToZoho(db: DB, runId: number) {
       date: istDate(),
       delivery_date: istDate(new Date(Date.now() + lead * 86_400_000)),
       reference_number: `FR-RUN${runId}`,
-      notes: `Draft created by Freshroots Demand Planner from run #${runId}. Quantities approved by the demand planner; review before issuing.`,
+      notes: `Draft created by Freshroots Demand Planner from run #${runId}${createdBy ? ` (sent by ${createdBy})` : ""}. Quantities approved by the demand planner, net of open POs; review before issuing.`,
       line_items: group.map((d) => {
         const skuId = recMap.get(d.recommendationId)!.skuId;
         return { item_id: itemMap.get(skuId), quantity: d.finalQty, rate: supMap.get(skuId)!.unitCost };
@@ -182,13 +182,13 @@ export async function pushRunToZoho(db: DB, runId: number) {
         .set({ zohoPoId: poId, zohoPoNumber: poNumber })
         .where(inArray(decisions.id, group.map((d) => d.id)));
       await db.insert(zohoPushes).values({
-        runId, supplierName: first.supplierName, poId, poNumber, lineCount: group.length, totalQty, status: "created",
+        runId, supplierName: first.supplierName, poId, poNumber, lineCount: group.length, totalQty, status: "created", createdBy,
       });
       results.push({ supplier: first.supplierName, poId, poNumber, status: String(po.status ?? "draft"), lines: group.length, totalQty });
     } catch (e) {
       const msg = (e as Error).message;
       await db.insert(zohoPushes).values({
-        runId, supplierName: first.supplierName, lineCount: group.length, totalQty, status: "failed", error: msg,
+        runId, supplierName: first.supplierName, lineCount: group.length, totalQty, status: "failed", error: msg, createdBy,
       });
       results.push({ supplier: first.supplierName, status: "failed", lines: group.length, totalQty, error: msg });
     }

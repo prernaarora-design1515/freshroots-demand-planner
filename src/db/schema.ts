@@ -68,6 +68,10 @@ export const runs = pgTable("runs", {
   skuCount: integer("sku_count").notNull(),
   flaggedCount: integer("flagged_count").notNull(),
   aiStatus: text("ai_status").notNull().default("pending"), // pending | ok | failed | skipped
+  // Where open purchase orders came from for this run: zoho | csv | zoho+csv | none | zoho_failed
+  openPoSource: text("open_po_source").notNull().default("none"),
+  openPoNote: text("open_po_note"),
+  createdBy: text("created_by"),
 });
 
 export const recommendations = pgTable("recommendations", {
@@ -82,8 +86,12 @@ export const recommendations = pgTable("recommendations", {
   minWeeks: real("min_weeks").notNull(),
   maxWeeks: real("max_weeks").notNull(),
   flags: text("flags").notNull(), // comma-separated: HIGH_DEMAND,STOCKOUT_RISK,OVERSTOCK_RISK
-  action: text("action").notNull(), // REORDER_NOW | REORDER | PAUSE | REVIEW | NO_ACTION
-  recommendedQty: integer("recommended_qty").notNull(),
+  action: text("action").notNull(), // REORDER_NOW | REORDER | COVERED | PAUSE | REVIEW | NO_ACTION
+  recommendedQty: integer("recommended_qty").notNull(), // net of open POs
+  grossQty: integer("gross_qty").notNull().default(0), // what the rules asked for before netting
+  openPoQty: integer("open_po_qty").notNull().default(0), // units already on open/draft POs
+  onHand: integer("on_hand").notNull().default(0),
+  unitCost: real("unit_cost"), // snapshot from sku_suppliers, for the results page
   borderline: text("borderline"), // deterministic note on near-threshold cases
   needsJudgment: boolean("needs_judgment").notNull().default(false),
   ruleSummary: text("rule_summary").notNull(), // template explanation, always present
@@ -98,6 +106,7 @@ export const decisions = pgTable("decisions", {
   reasonCode: text("reason_code"),
   note: text("note"),
   decidedBy: text("decided_by").notNull().default("Raghav"),
+  decidedByUserId: integer("decided_by_user_id"),
   decidedAt: timestamp("decided_at", { withTimezone: true }).defaultNow().notNull(),
   // Set once the line is sent to Zoho; the decision is then locked.
   zohoPoId: text("zoho_po_id"),
@@ -150,5 +159,53 @@ export const zohoPushes = pgTable("zoho_pushes", {
   totalQty: integer("total_qty").notNull(),
   status: text("status").notNull(), // created | failed
   error: text("error"),
+  createdBy: text("created_by"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+/* ---------- Open purchase orders (netted off the rules' quantities) ---------- */
+
+/** Optional upload: open POs from outside Zoho (open_purchase_orders.csv). Replaced on each upload. */
+export const openPosCsv = pgTable("open_pos_csv", {
+  id: serial("id").primaryKey(),
+  poNumber: text("po_number").notNull(),
+  skuId: text("sku_id").notNull(),
+  openQty: integer("open_qty").notNull(),
+  expectedDate: text("expected_date"),
+  status: text("status"),
+});
+
+/** What each run saw as open, so a run can always be explained later. */
+export const runOpenPos = pgTable("run_open_pos", {
+  id: serial("id").primaryKey(),
+  runId: integer("run_id").notNull(),
+  skuId: text("sku_id").notNull(),
+  source: text("source").notNull(), // zoho | csv
+  poNumber: text("po_number").notNull(),
+  status: text("status").notNull(),
+  openQty: integer("open_qty").notNull(),
+  expectedDate: text("expected_date"),
+  vendor: text("vendor"),
+});
+
+/* ---------- Users ---------- */
+
+export const users = pgTable("users", {
+  id: serial("id").primaryKey(),
+  email: text("email").notNull().unique(), // stored lower-case
+  name: text("name").notNull(),
+  role: text("role").notNull(), // admin | planner | viewer
+  passwordHash: text("password_hash").notNull(),
+  active: boolean("active").notNull().default(true),
+  failedLogins: integer("failed_logins").notNull().default(0),
+  lockedUntil: timestamp("locked_until", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
+});
+
+export const sessions = pgTable("sessions", {
+  id: text("id").primaryKey(), // sha256 of the cookie token; the token itself is never stored
+  userId: integer("user_id").notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });

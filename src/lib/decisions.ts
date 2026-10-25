@@ -28,10 +28,13 @@ export const decisionInput = z
 
 export type DecisionInput = z.infer<typeof decisionInput>;
 
-export async function saveDecision(db: DB, input: DecisionInput) {
+export async function saveDecision(db: DB, input: DecisionInput, by: { id: number; name: string }) {
   const [rec] = await db.select().from(recommendations).where(eq(recommendations.id, input.recommendationId));
   if (!rec) throw new Error("Recommendation not found");
-  await assertNotSent(db, rec.id);
+  if (rec.action === "NO_ACTION") throw new Error("Nothing to decide on this SKU.");
+  // Two planners on the same line: the first decision stands until someone clicks Undo.
+  const [existing] = await db.select().from(decisions).where(eq(decisions.recommendationId, rec.id));
+  if (existing) throw new Error(`Already decided by ${existing.decidedBy}. Refresh the page; click Undo first to change it.`);
   // Approving keeps the rules' quantity; anything else must explain itself.
   const finalQty = input.status === "APPROVED" ? rec.recommendedQty : input.status === "REJECTED" ? 0 : input.finalQty;
   const values = {
@@ -40,13 +43,12 @@ export async function saveDecision(db: DB, input: DecisionInput) {
     finalQty,
     reasonCode: input.status === "APPROVED" ? null : input.reasonCode ?? null,
     note: input.note ?? null,
+    decidedBy: by.name,
+    decidedByUserId: by.id,
     decidedAt: new Date(),
   };
-  const [row] = await db
-    .insert(decisions)
-    .values(values)
-    .onConflictDoUpdate({ target: decisions.recommendationId, set: values })
-    .returning();
+  const [row] = await db.insert(decisions).values(values).onConflictDoNothing().returning();
+  if (!row) throw new Error("Someone else just decided this line. Refresh the page.");
   return row;
 }
 
@@ -93,6 +95,8 @@ export async function approvedOrderLines(db: DB, runId: number) {
         Region: dist?.region ?? "",
         Supplier: supMap.get(r.skuId)?.supplierName ?? "",
         Action: r.action,
+        Rules_Qty: r.grossQty,
+        Open_PO_Qty: r.openPoQty,
         Recommended_Qty: r.recommendedQty,
         Final_Qty: d.finalQty,
         Unit_of_Measure: s?.unitOfMeasure ?? "Units",

@@ -10,6 +10,7 @@ type RunSummary = { id: number; createdAt: string; flaggedCount: number };
 const ACTION_STYLE: Record<string, { label: string; cls: string }> = {
   REORDER_NOW: { label: "Reorder now", cls: "bg-red-50 text-red-700 ring-red-200" },
   REORDER: { label: "Reorder", cls: "bg-amber-50 text-amber-800 ring-amber-200" },
+  COVERED: { label: "Covered by open PO", cls: "bg-emerald-50 text-emerald-800 ring-emerald-200" },
   REVIEW: { label: "Needs review", cls: "bg-violet-50 text-violet-700 ring-violet-200" },
   PAUSE: { label: "Pause order", cls: "bg-sky-50 text-sky-700 ring-sky-200" },
   NO_ACTION: { label: "No action", cls: "bg-gray-50 text-gray-500 ring-gray-200" },
@@ -18,6 +19,15 @@ const FLAG_LABEL: Record<string, string> = {
   HIGH_DEMAND: "High demand",
   STOCKOUT_RISK: "Stockout risk",
   OVERSTOCK_RISK: "Overstock risk",
+};
+
+const OPEN_PO_SOURCE: Record<string, string> = {
+  zoho: "read from Zoho",
+  csv: "from uploaded CSV",
+  "zoho+csv": "read from Zoho + uploaded CSV",
+  zoho_failed: "Zoho read failed",
+  "zoho_failed+csv": "Zoho read failed; CSV used",
+  none: "none found (Zoho not connected, no CSV)",
 };
 
 const fmtDate = (iso: string) =>
@@ -29,11 +39,15 @@ export default function Dashboard({
   runs,
   reasonCodes,
   zohoConnected = false,
+  canAct = false,
+  signedIn = false,
 }: {
   detail: RunDetail;
   runs: RunSummary[];
   reasonCodes: ReasonCodes;
   zohoConnected?: boolean;
+  canAct?: boolean;
+  signedIn?: boolean;
 }) {
   const router = useRouter();
   const { run, rows } = detail;
@@ -54,6 +68,7 @@ export default function Dashboard({
     (s, r) => s + (r.decision && r.decision.status !== "REJECTED" ? r.decision.finalQty : 0),
     0,
   );
+  const openUnitsNetted = rows.reduce((s, r) => s + (r.grossQty - r.recommendedQty), 0);
   const overrides = rows.filter((r) => r.decision?.status === "OVERRIDDEN" || r.decision?.status === "REJECTED").length;
 
   const visible = rows.filter(
@@ -111,6 +126,12 @@ export default function Dashboard({
               </span>
             )}
           </p>
+          <p className="mt-1 text-xs text-gray-500">
+            Open POs: {OPEN_PO_SOURCE[run.openPoSource] ?? run.openPoSource}
+            {detail.openPoLineCount > 0 && ` · ${detail.openPoLineCount} open line(s) netted off`}
+            {run.createdBy && ` · run by ${run.createdBy}`}
+          </p>
+          {run.openPoNote && <p className="mt-1 text-xs text-red-700">{run.openPoNote}. Quantities were not netted for Zoho POs.</p>}
           {run.aiStatus !== "ok" && (
             <p className="mt-1 text-xs text-gray-500">
               {run.aiStatus === "failed"
@@ -136,14 +157,17 @@ export default function Dashboard({
               ))}
             </select>
           )}
+          {canAct && (
           <button
             onClick={rerun}
             disabled={busy}
+            title="Re-reads open POs from Zoho and runs the rules on the current data"
             className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium hover:bg-gray-50 disabled:opacity-50"
           >
             {busy ? "Running…" : "Re-run rules"}
           </button>
-          {zohoConnected ? (
+          )}
+          {!canAct ? null : zohoConnected ? (
             <button
               onClick={sendToZoho}
               disabled={busy || toSend === 0}
@@ -157,12 +181,18 @@ export default function Dashboard({
               Connect Zoho
             </a>
           )}
-          <a
-            href={`/api/runs/${run.id}/export`}
-            className="rounded-lg bg-ink px-3 py-2 text-sm font-medium text-white hover:bg-ink/90"
-          >
-            Download approved list (CSV)
-          </a>
+          {signedIn ? (
+            <a
+              href={`/api/runs/${run.id}/export`}
+              className="rounded-lg bg-ink px-3 py-2 text-sm font-medium text-white hover:bg-ink/90"
+            >
+              Download approved list (CSV)
+            </a>
+          ) : (
+            <a href="/login" className="rounded-lg bg-ink px-3 py-2 text-sm font-medium text-white hover:bg-ink/90">
+              Sign in to act
+            </a>
+          )}
         </div>
       </div>
       {!isLatest && (
@@ -176,8 +206,14 @@ export default function Dashboard({
       )}
 
       {/* Summary tiles */}
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-6">
         <Tile label="Reorder now" value={rows.filter((r) => r.action === "REORDER_NOW").length} tone="text-red-700" />
+        <Tile
+          label="Covered by open POs"
+          value={rows.filter((r) => r.action === "COVERED").length}
+          tone="text-emerald-700"
+          sub={openUnitsNetted ? `${openUnitsNetted.toLocaleString("en-IN")} units not re-ordered` : undefined}
+        />
         <Tile label="Pause order" value={rows.filter((r) => r.action === "PAUSE").length} tone="text-sky-700" />
         <Tile label="Needs review / borderline" value={rows.filter((r) => r.needsJudgment || r.borderline).length} tone="text-violet-700" />
         <Tile label="Decided" value={`${decided} / ${flagged.length}`} sub={overrides ? `${overrides} override(s)` : undefined} />
@@ -228,7 +264,7 @@ export default function Dashboard({
           </thead>
           <tbody className="divide-y divide-gray-100">
             {visible.map((r) => (
-              <Row key={r.id} r={r} reasonCodes={reasonCodes} />
+              <Row key={r.id} r={r} reasonCodes={reasonCodes} canAct={canAct} />
             ))}
             {!visible.length && (
               <tr>
@@ -239,9 +275,10 @@ export default function Dashboard({
         </table>
       </div>
       <p className="text-xs text-gray-500">
-        Quantities come from Raghav&apos;s documented rules; AI only writes the explanation. Open POs are not in the data yet,
-        so check them before approving. Nothing reaches procurement until it is approved here; approved lines go to Zoho as
-        draft POs that procurement issues.
+        Quantities come from Raghav&apos;s documented rules; AI only writes the explanation. Units already on open or draft
+        POs (read from Zoho at each run, plus any uploaded open_purchase_orders.csv) are subtracted from the order; the
+        flags still use stock on hand. Nothing reaches procurement until a planner approves it here; approved lines go to
+        Zoho as draft POs that procurement issues.
       </p>
     </div>
   );
@@ -292,7 +329,7 @@ function CoverBar({ value, min, max }: { value: number; min: number; max: number
   );
 }
 
-function Row({ r, reasonCodes }: { r: DashboardRow; reasonCodes: ReasonCodes }) {
+function Row({ r, reasonCodes, canAct }: { r: DashboardRow; reasonCodes: ReasonCodes; canAct: boolean }) {
   const router = useRouter();
   const [mode, setMode] = useState<"idle" | "override" | "reject">("idle");
   const [qty, setQty] = useState(String(r.recommendedQty));
@@ -354,6 +391,18 @@ function Row({ r, reasonCodes }: { r: DashboardRow; reasonCodes: ReasonCodes }) 
       <td className="px-3 py-3">
         <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ring-1 ${style.cls}`}>{style.label}</span>
         {r.recommendedQty > 0 && <div className="mt-1 font-semibold tabular-nums text-gray-900">{r.recommendedQty} units</div>}
+        {r.openPoQty > 0 && (
+          <div className="mt-1 rounded bg-emerald-50 px-1.5 py-1 text-[11px] leading-snug text-emerald-900">
+            {r.grossQty > 0 ? (
+              <>Rules {r.grossQty} − open POs {r.openPoQty} = <b>{r.recommendedQty}</b></>
+            ) : (
+              <>{r.openPoQty} units on open POs</>
+            )}
+            <div className="text-emerald-800/80">
+              {r.openPos.map((o) => `${o.poNumber} (${o.status}${o.source === "csv" ? ", CSV" : ""}) ${o.openQty}`).join(" · ")}
+            </div>
+          </div>
+        )}
         <div className="mt-1 flex flex-wrap gap-1">
           {r.flags.map((f) => (
             <span key={f} className="text-[11px] text-gray-500">{FLAG_LABEL[f]}</span>
@@ -375,23 +424,32 @@ function Row({ r, reasonCodes }: { r: DashboardRow; reasonCodes: ReasonCodes }) 
             <div className={`font-semibold ${r.decision.status === "APPROVED" ? "text-emerald-700" : r.decision.status === "REJECTED" ? "text-gray-600" : "text-amber-700"}`}>
               {r.decision.status === "APPROVED" ? "Approved" : r.decision.status === "REJECTED" ? "Rejected" : "Overridden"}
               {r.decision.status !== "REJECTED" &&
-                (r.action === "PAUSE" && r.decision.finalQty === 0 ? " · hold next order" : ` · ${r.decision.finalQty} units`)}
+                (r.action === "PAUSE" && r.decision.finalQty === 0
+                  ? " · hold next order"
+                  : r.action === "COVERED" && r.decision.finalQty === 0
+                    ? " · no new order"
+                    : ` · ${r.decision.finalQty} units`)}
             </div>
+            <div className="text-gray-500">by {r.decision.decidedBy}</div>
             {r.decision.reasonCode && <div className="text-gray-600">{reasonCodes[r.decision.reasonCode] ?? r.decision.reasonCode}</div>}
             {r.decision.note && <div className="italic text-gray-500">“{r.decision.note}”</div>}
-            {r.decision.zohoPoNumber ? (
+            {r.decision.zohoPoNumber || !canAct ? (
+              r.decision.zohoPoNumber && (
               <div className="mt-1 inline-block rounded bg-emerald-50 px-1.5 py-0.5 text-emerald-800 ring-1 ring-emerald-200">
                 In Zoho · draft {r.decision.zohoPoNumber}
               </div>
+              )
             ) : (
               <button onClick={undo} disabled={busy} className="mt-1 text-gray-500 underline hover:text-gray-800">Undo</button>
             )}
             {err && <div className="text-red-600">{err}</div>}
           </div>
+        ) : !canAct ? (
+          <a href="/login" className="text-xs text-gray-500 underline">Sign in to decide</a>
         ) : mode === "idle" ? (
           <div className="flex flex-wrap gap-1.5">
             <button onClick={() => submit("APPROVED")} disabled={busy} className="rounded-md bg-emerald-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-50">
-              Approve
+              {r.action === "COVERED" ? "Confirm (no order)" : "Approve"}
             </button>
             <button onClick={() => setMode("override")} className="rounded-md border border-gray-300 px-2.5 py-1 text-xs hover:bg-gray-50">Override</button>
             <button onClick={() => setMode("reject")} className="rounded-md border border-gray-300 px-2.5 py-1 text-xs hover:bg-gray-50">Reject</button>

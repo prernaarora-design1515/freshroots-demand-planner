@@ -29,6 +29,8 @@ export async function explainWithGemini(
     perishability: r.perishability,
     flags: r.flags,
     action: r.action,
+    rules_qty_before_open_pos: r.grossQty,
+    units_on_open_pos: r.openPoQty,
     recommended_qty: r.recommendedQty,
     units_on_hand: r.onHand,
     avg_last_4_weeks: r.avg4,
@@ -53,7 +55,9 @@ export async function explainWithGemini(
       "You help Raghav, a demand planner at an Indian FMCG distributor, review reorder recommendations. " +
       "The numbers come from a deterministic rules engine and are final: never change, recompute or invent a number, " +
       "and never recommend a different quantity. For each SKU write 1-2 short sentences in plain English: why it was flagged, " +
-      "and, if borderline_notes is present, what Raghav should double-check (e.g. open POs, a competitor scheme, a one-off order). " +
+      "and, if borderline_notes is present, what Raghav should double-check (e.g. a competitor scheme, a one-off order). " +
+      "If units_on_open_pos > 0, say the open POs were subtracted; action COVERED means open POs already cover it and nothing new is ordered. " +
+      "Only mention the festival uplift as a cause if borderline_notes says so; high demand compares raw sales without the uplift. " +
       "No preamble, no markdown.",
     prompt:
       `Planning date: ${ctx.asOfDate}. ${ctx.isFestival ? "This is a festival month, so expected demand includes a 25% uplift." : "Not a festival month."}\n` +
