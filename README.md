@@ -1,8 +1,10 @@
 # Freshroots Demand Planner
 
-MESA Term 2 · Case 1, Option A. Raghav's documented reorder rules run twice a week on the SAP export. Gemini explains each flag, and Raghav approves or overrides every line before procurement sees it.
+MESA Term 2 · Case 1, Option A. Raghav's documented reorder rules run on the SAP export. Gemini explains each flag, Raghav approves or overrides every line, and approved lines go to Zoho Inventory as draft purchase orders.
 
-**Stack:** Next.js 15 (App Router, TypeScript) · Neon Postgres + Drizzle ORM · Gemini via Vercel AI SDK · Tailwind · Vitest · GitHub → Vercel
+**Live app:** https://freshroots-demand-planner-eight.vercel.app
+
+**Stack:** Next.js 15 (App Router, TypeScript) · Neon Postgres + Drizzle ORM · Gemini Flash-Lite via Vercel AI SDK · Zoho Inventory API (OAuth) · Tailwind · Vitest · GitHub → Vercel
 
 ## How it works
 
@@ -15,7 +17,8 @@ CSV upload (SAP export) ──► Neon tables ──► Rules engine (src/lib/ru
                                                 ▼
                      Planner dashboard (/) ──► Raghav approves / overrides / rejects + reason code
                                                 ▼
-                         Approved reorder list (CSV) for procurement  ·  decisions logged for the 90-day plan
+              Zoho Inventory: one DRAFT purchase order per supplier (procurement issues it)
+                         + CSV export as fallback  ·  decisions logged for the 90-day plan
 ```
 
 ### Rules (as agreed)
@@ -70,23 +73,38 @@ npm test                    # rules engine tests
 
 | Method | Path | Purpose |
 |---|---|---|
-| POST | `/api/upload` | multipart form with any of `weekly_sales`, `sku_master`, `distributor_master`, `current_inventory`, `calendar`. Each file uploaded replaces its table |
+| POST | `/api/upload` | multipart form with any of `weekly_sales`, `sku_master`, `distributor_master`, `current_inventory`, `calendar`, `sku_suppliers`. Each file uploaded replaces its table |
 | GET / POST | `/api/runs` | list runs / run the rules (+ Gemini) on the current data |
 | POST / DELETE | `/api/decisions` | approve, override (`finalQty` + `reasonCode`), or reject a recommendation / undo |
 | POST | `/api/sample` | load the bundled seed CSVs and run the rules |
-| GET | `/api/runs/:id/export` | CSV of approved orders and approved pauses |
+| GET | `/api/runs/:id/export` | CSV of approved orders and approved pauses (with supplier and Zoho PO number) |
+| GET | `/api/zoho/connect`, `/api/zoho/callback` | Zoho OAuth connect flow (state cookie checked; only Zoho domains trusted) |
+| POST | `/api/zoho/sync` | create or link suppliers as Zoho vendors and SKUs as Zoho items |
+| POST | `/api/zoho/push` | send a run's approved lines to Zoho as draft POs, one per supplier |
+| POST | `/api/zoho/disconnect` | revoke and forget the Zoho connection |
 
-## Database (8 tables)
+## Database (12 tables)
 
-- **Seed data:** `skus`, `distributors`, `weekly_sales`, `inventory`, `calendar`
+- **Seed data:** `skus`, `distributors`, `weekly_sales`, `inventory`, `calendar`, `sku_suppliers`
 - **Created by the app:**
   - `runs`: one row per run
   - `recommendations`: per SKU per run: averages, cover, flags, action, qty, borderline, rule summary, AI explanation
-  - `decisions`: Raghav's approval or override, with a reason code. This feeds the override-rate metric.
+  - `decisions`: Raghav's approval or override, with a reason code and, once sent, the Zoho PO number (sent lines are locked). This feeds the override-rate metric.
+  - `zoho_connection`, `zoho_map`, `zoho_pushes`: the Zoho OAuth connection, local-to-Zoho ID mapping, and send history
 
-## Future state (not in this demo)
+## Zoho Inventory setup
 
-- A Vercel Cron for the Mon/Thu 6 am run, fed by an automated SAP export
-- Pushing approved lines into Zoho Inventory as draft POs
-- Netting off open POs
-- AI anomaly detection, once 3 years of history is loaded
+1. Create a Zoho Inventory organization (India data centre: inventory.zoho.in).
+2. In api-console.zoho.in create a **Server-based Application** with redirect URI `https://<your-app>/api/zoho/callback`.
+3. Add `ZOHO_CLIENT_ID` and `ZOHO_CLIENT_SECRET` to Vercel (Production), redeploy.
+4. In the app: **Zoho → Connect Zoho**, then **Sync suppliers & items**, then **Send approved to Zoho** on the dashboard.
+
+`sku_suppliers.csv` (supplier, unit cost, lead time per SKU) is **fictional demo data**: the case does not name Freshroots' suppliers.
+
+## Known gaps / future state
+
+- The twice-weekly run is manual (upload + Re-run). Next: Vercel Cron Mon/Thu 6 am fed by an automated SAP export.
+- Open POs are not netted off yet. Next: read open POs from Zoho before recommending (the app already has read access).
+- No 90-day results page yet (override rate, stockouts, write-offs); decisions are logged and ready for it.
+- AI anomaly detection, once 3 years of history is loaded.
+- Single-user: decisions are recorded as "Raghav"; access relies on Vercel deployment protection.
