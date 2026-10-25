@@ -1,0 +1,16 @@
+SKU_ID,Supplier_ID,Supplier_Name,Unit_Cost,Lead_Time_Days
+SKU001,SUP-BEV,Western Ghats Beverages (Demo),18,7
+SKU002,SUP-SNK,Deccan Snack Foods (Demo),32,5
+SKU003,SUP-STP,Malwa Grains & Staples (Demo),68,10
+SKU004,SUP-DRY,Nilgiri Dairy Alternatives (Demo),95,4
+SKU005,SUP-SNK,Deccan Snack Foods (Demo),110,5
+SKU006,SUP-STP,Malwa Grains & Staples (Demo),145,10
+SKU007,SUP-BEV,Western Ghats Beverages (Demo),28,7
+SKU008,SUP-SNK,Deccan Snack Foods (Demo),22,5
+SKU009,SUP-STP,Malwa Grains & Staples (Demo),120,10
+SKU010,SUP-CND,Coastal Condiments Co. (Demo),85,8
+SKU011,SUP-STP,Malwa Grains & Staples (Demo),38,3
+SKU012,SUP-BEV,Western Ghats Beverages (Demo),90,7
+SKU013,SUP-CND,Coastal Condiments Co. (Demo),140,8
+SKU014,SUP-SNK,Deccan Snack Foods (Demo),75,5
+SKU015,SUP-CND,Coastal Condiments Co. (Demo),210,8
