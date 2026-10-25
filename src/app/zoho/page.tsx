@@ -59,7 +59,7 @@ export default async function ZohoPage({ searchParams }: { searchParams: Promise
         {conn ? (
           <div className="mt-2 text-sm text-gray-700">
             <span className="mr-2 inline-block h-2 w-2 rounded-full bg-emerald-500" />
-            Connected to <b>{conn.orgName}</b> (org {conn.orgId}) · since {conn.connectedAt.toLocaleDateString("en-IN")}
+            Connected to <b>{conn.orgName}</b> (org {conn.orgId}) · since {conn.connectedAt.toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata" })}
             <div className="mt-1 text-xs text-gray-500">API: {conn.apiBase}</div>
           </div>
         ) : (
@@ -106,7 +106,7 @@ export default async function ZohoPage({ searchParams }: { searchParams: Promise
             <tbody className="divide-y divide-gray-100">
               {pushes.map((p) => (
                 <tr key={p.id} className="align-top">
-                  <td className="py-1.5 text-gray-600">{p.createdAt.toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</td>
+                  <td className="py-1.5 text-gray-600">{p.createdAt.toLocaleString("en-IN", { timeZone: "Asia/Kolkata", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</td>
                   <td>#{p.runId}</td>
                   <td>{p.supplierName}</td>
                   <td>{p.lineCount}</td>
