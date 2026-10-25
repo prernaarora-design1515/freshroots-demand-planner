@@ -21,7 +21,8 @@ const FLAG_LABEL: Record<string, string> = {
 };
 
 const fmtDate = (iso: string) =>
-  new Date(iso).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+  // Fixed to IST so server- and browser-rendered times always match.
+  new Date(iso).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 
 export default function Dashboard({
   detail,
