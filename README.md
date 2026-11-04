@@ -62,7 +62,8 @@ These outcomes are asserted in `src/lib/rules.test.ts`.
 | Planner | Upload data, run the rules, approve / override / reject, send to Zoho |
 | Admin | Everything, plus the Users page and connecting / syncing / disconnecting Zoho |
 
-- **First admin:** add `SETUP_CODE` (any secret phrase, 8+ characters) in Vercel, redeploy, open `/setup` and enter it with your name, email and password. `/setup` closes as soon as one user exists.
+- **Demo mode (on by default):** the sign-in page offers one-click accounts with no password: Raghav Kulkarni (Planner), Deepa Nair (Admin) and Procurement (Viewer). So reviewers can try every role without any set-up. In demo mode the demo accounts can't be changed and Disconnect Zoho is turned off, so one reviewer can't break the app for the next. Set `DEMO_MODE=false` for real use.
+- **First admin (real use):** add `SETUP_CODE` (any secret phrase, 8+ characters) in Vercel, redeploy, open `/setup` and enter it with your name, email and password. `/setup` closes as soon as one user exists.
 - The admin adds people on **Users** with a temporary password; they change it under their name.
 - Every decision records who made it. If two planners act on the same line, the first decision stands until someone clicks Undo.
 - Passwords: scrypt with a random salt. Sessions: random token in an httpOnly cookie (14 days), only its hash stored. 5 wrong passwords lock the account for 15 minutes. Cross-site POSTs are rejected. Role changes, deactivation and password resets sign the user out.
@@ -116,7 +117,7 @@ npm test                    # rules, netting, results and password tests
 | POST | `/api/zoho/sync` | create or link suppliers as Zoho vendors and SKUs as Zoho items |
 | POST | `/api/zoho/push` | send a run's approved lines to Zoho as draft POs, one per supplier |
 | POST | `/api/zoho/disconnect` | revoke and forget the Zoho connection (admin) |
-| POST | `/api/auth/login`, `/api/auth/logout`, `/api/auth/setup` | sign in / out; first-admin setup with `SETUP_CODE` |
+| POST | `/api/auth/login`, `/api/auth/logout`, `/api/auth/setup`, `/api/auth/demo` | sign in / out; first-admin setup with `SETUP_CODE`; one-click demo sign-in by role |
 | POST | `/api/account/password` | change your own password |
 | GET / POST / PATCH | `/api/users` | list, add, change role / deactivate / reset password (admin) |
 

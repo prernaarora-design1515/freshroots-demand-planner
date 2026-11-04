@@ -6,6 +6,7 @@ import { getDb } from "@/db";
 import { runOpenPos, runs, skuSuppliers, zohoPushes } from "@/db/schema";
 import { getConnection, isZohoConfigured, redirectUri, zohoConfig } from "@/lib/zoho/client";
 import ZohoActions from "@/components/ZohoActions";
+import { demoMode } from "@/lib/demo";
 
 export const dynamic = "force-dynamic";
 
@@ -55,7 +56,7 @@ export default async function ZohoPage({ searchParams }: { searchParams: Promise
       <div>
         <h1 className="font-display text-3xl font-medium tracking-tight text-ink">Zoho Inventory</h1>
         <p className="mt-1 text-sm text-gray-600">
-          Approved reorder lines are sent to Zoho as <b>draft</b> purchase orders, one per supplier. Procurement reviews and issues them in Zoho.
+          Freshroots&apos; procurement team manages purchase orders in Zoho Inventory. The planner talks to it in both directions.
         </p>
       </div>
 
@@ -69,7 +70,7 @@ export default async function ZohoPage({ searchParams }: { searchParams: Promise
           <div className="mt-2 text-sm text-gray-700">
             <span className="mr-2 inline-block h-2 w-2 rounded-full bg-emerald-500" />
             Connected to <b>{conn.orgName}</b> (org {conn.orgId}) · since {conn.connectedAt.toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata" })}
-            <div className="mt-1 text-xs text-gray-500">API: {conn.apiBase}</div>
+            <div className="mt-1 text-xs text-gray-500">Zoho Inventory · India data centre · {pushes.filter((p) => p.status === "created").length} draft PO(s) sent so far</div>
           </div>
         ) : (
           <div className="mt-2 text-sm text-gray-700">
@@ -79,15 +80,32 @@ export default async function ZohoPage({ searchParams }: { searchParams: Promise
         )}
         <div className="mt-4">
           {isAdmin ? (
-            <ZohoActions connected={!!conn} configured={configured} supplierCount={supplierCount} />
+            <ZohoActions connected={!!conn} configured={configured} supplierCount={supplierCount} allowDisconnect={!demoMode()} />
           ) : (
-            <p className="text-xs text-gray-500">Only an admin can connect, sync or disconnect Zoho.</p>
+            <p className="text-xs text-gray-500">{user ? "Syncing suppliers and items is an admin task." : "Sign in as Admin to sync suppliers and items."}</p>
           )}
         </div>
       </div>
 
       <div className="rounded-xl border border-gray-200 bg-white p-5">
-        <h2 className="text-sm font-semibold text-gray-900">Setup (one time)</h2>
+        <h2 className="text-sm font-semibold text-gray-900">How the planner uses Zoho</h2>
+        <ol className="mt-4 grid gap-4 sm:grid-cols-3">
+          {[
+            ["Sync", `The ${supplierCount || ""} SKUs become Zoho items and their suppliers become Zoho vendors (admin, one click).`],
+            ["Send", "Lines a planner approves go to Zoho as draft purchase orders, one per supplier, tagged FR-RUN<run>. Procurement reviews and issues them there."],
+            ["Read back", "Every run reads POs that can still deliver stock (drafts, issued, part-received) and subtracts them, so nothing is ordered twice."],
+          ].map(([t, d], i) => (
+            <li key={t} className="card-lift rounded-xl border border-gray-200 p-4">
+              <div className="font-mono text-[11px] text-gray-500"><span className="text-accent">0{i + 1}</span> —— {t}</div>
+              <p className="mt-2 text-sm leading-relaxed text-gray-700">{d}</p>
+            </li>
+          ))}
+        </ol>
+      </div>
+
+      {!conn && isAdmin && (
+      <div className="rounded-xl border border-gray-200 bg-white p-5">
+        <h2 className="text-sm font-semibold text-gray-900">Connect Zoho (one-time set-up)</h2>
         <ol className="mt-3 space-y-4">
           <Step n={1} done={configured || !!conn} title="Create a Zoho Inventory account and organization">
             Sign up at <a className="text-blue-700 underline" href="https://www.zoho.com/in/inventory/" target="_blank" rel="noreferrer">zoho.com/in/inventory</a> (India data centre) and create a test organization, e.g. “Freshroots (Test)”.
@@ -108,6 +126,7 @@ export default async function ZohoPage({ searchParams }: { searchParams: Promise
           </Step>
         </ol>
       </div>
+      )}
 
       <div className="rounded-xl border border-gray-200 bg-white p-5">
         <h2 className="text-sm font-semibold text-gray-900">Open POs netted off the latest run{lastRun ? ` (#${lastRun.id})` : ""}</h2>

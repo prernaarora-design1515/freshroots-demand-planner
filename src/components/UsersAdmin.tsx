@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
-type U = { id: number; name: string; email: string; role: string; active: boolean; createdAt: string; lastLoginAt: string | null };
+type U = { id: number; name: string; email: string; role: string; active: boolean; demo: boolean; createdAt: string; lastLoginAt: string | null };
 
 const fmt = (iso: string | null) =>
   iso ? new Date(iso).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "never";
@@ -48,13 +48,17 @@ export default function UsersAdmin({ users, meId }: { users: U[]; meId: number }
             {users.map((u) => (
               <tr key={u.id} className={`align-top ${u.active ? "" : "text-gray-400"}`}>
                 <td className="px-3 py-2.5">
-                  <div className="font-medium">{u.name}{u.id === meId && <span className="ml-1 text-xs text-gray-500">(you)</span>}</div>
+                  <div className="font-medium">
+                    {u.name}
+                    {u.id === meId && <span className="ml-1 text-xs text-gray-500">(you)</span>}
+                    {u.demo && <span className="ml-1.5 rounded-full border border-gray-300 px-1.5 font-mono text-[10px] text-gray-500">demo · locked</span>}
+                  </div>
                   <div className="text-xs text-gray-500">{u.email}</div>
                 </td>
                 <td className="px-3 py-2.5">
                   <select
                     value={u.role}
-                    disabled={busy}
+                    disabled={busy || u.demo}
                     aria-label={`Role for ${u.name}`}
                     onChange={(e) => call("PATCH", { id: u.id, role: e.target.value }, `${u.name} is now ${e.target.value}.`)}
                     className="rounded border border-gray-300 px-1.5 py-1"
@@ -67,6 +71,7 @@ export default function UsersAdmin({ users, meId }: { users: U[]; meId: number }
                 <td className="px-3 py-2.5">{u.active ? "Active" : "Deactivated"}</td>
                 <td className="px-3 py-2.5 text-gray-600">{fmt(u.lastLoginAt)}</td>
                 <td className="px-3 py-2.5">
+                  {u.demo ? <span className="text-xs text-gray-400">Fixed for reviewers</span> : (
                   <div className="flex flex-wrap gap-1.5">
                     {u.id !== meId && (
                       <button
@@ -81,6 +86,7 @@ export default function UsersAdmin({ users, meId }: { users: U[]; meId: number }
                       Reset password
                     </button>
                   </div>
+                  )}
                   {resetFor === u.id && (
                     <form
                       className="mt-2 flex gap-1.5"

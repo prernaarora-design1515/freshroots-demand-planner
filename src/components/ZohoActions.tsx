@@ -7,10 +7,12 @@ export default function ZohoActions({
   connected,
   configured,
   supplierCount,
+  allowDisconnect = true,
 }: {
   connected: boolean;
   configured: boolean;
   supplierCount: number;
+  allowDisconnect?: boolean;
 }) {
   const router = useRouter();
   const [busy, startTransition] = useTransition();
@@ -50,13 +52,13 @@ export default function ZohoActions({
             >
               {busy ? "Working…" : "Sync suppliers & items"}
             </button>
-            <button
+            {allowDisconnect && <button
               disabled={busy}
               onClick={() => post("/api/zoho/disconnect", () => "Disconnected from Zoho.")}
               className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm hover:bg-gray-50 disabled:opacity-50"
             >
               Disconnect
-            </button>
+            </button>}
           </>
         )}
       </div>

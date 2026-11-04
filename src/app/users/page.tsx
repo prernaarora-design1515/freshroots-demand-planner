@@ -3,6 +3,7 @@ import { getDb } from "@/db";
 import { currentUser, hasRole, ROLES } from "@/lib/auth";
 import { listUsers } from "@/lib/users";
 import UsersAdmin from "@/components/UsersAdmin";
+import { isDemoEmail } from "@/lib/demo";
 
 export const dynamic = "force-dynamic";
 
@@ -14,6 +15,7 @@ export default async function UsersPage() {
     return <p className="rounded-lg bg-yellow-50 px-3 py-2 text-sm text-yellow-800">Only admins can manage users.</p>;
   const users = (await listUsers(db)).map((u) => ({
     ...u,
+    demo: isDemoEmail(u.email),
     createdAt: u.createdAt.toISOString(),
     lastLoginAt: u.lastLoginAt?.toISOString() ?? null,
   }));

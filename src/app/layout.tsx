@@ -3,6 +3,7 @@ import Link from "next/link";
 import "./globals.css";
 import { currentUser, hasRole, ROLES, userCount } from "@/lib/auth";
 import { getDb } from "@/db";
+import { demoMode, isDemoEmail } from "@/lib/demo";
 import { tickerItems, type TickerItem } from "@/lib/ticker";
 import SignOutButton from "@/components/SignOutButton";
 import ThemeToggle, { THEME_SCRIPT } from "@/components/ThemeToggle";
@@ -91,7 +92,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
               {user ? (
                 <span className="flex items-center gap-3">
                   <Link href="/account" className="link-draw text-ink-2 hover:text-ink" title={user.email}>
-                    {user.name} <span className="font-mono text-[11px] text-gray-500">· {ROLES[user.role].label}</span>
+                    {user.name} <span className="font-mono text-[11px] text-gray-500">· {ROLES[user.role].label}{isDemoEmail(user.email) ? " · demo" : ""}</span>
                   </Link>
                   <SignOutButton />
                 </span>
@@ -108,7 +109,9 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
         {!user && (
           <div className="border-b border-amber-200 bg-amber-50">
             <p className="mx-auto max-w-7xl px-4 py-1.5 text-xs text-amber-900">
-              {needsSetup ? (
+              {demoMode() ? (
+                <>You&apos;re viewing read-only. <Link href="/login" className="font-medium underline">Sign in with one click</Link> as Planner, Admin or Viewer to try approvals, Zoho sends and user management.</>
+              ) : needsSetup ? (
                 <>Read-only view. No users yet: the project owner sets up the first admin at <Link href="/setup" className="underline">/setup</Link>.</>
               ) : (
                 <>You&apos;re viewing read-only. <Link href="/login" className="underline">Sign in</Link> to upload data, approve orders or send them to Zoho.</>

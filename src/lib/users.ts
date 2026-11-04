@@ -3,6 +3,7 @@ import { and, asc, eq, ne, sql } from "drizzle-orm";
 import { z } from "zod";
 import type { DB } from "@/db";
 import { sessions, users } from "@/db/schema";
+import { demoMode, isDemoEmail } from "./demo";
 import { hashPassword, isRole, MIN_PASSWORD, normEmail, passwordProblem, userCount, verifyPassword, type Role } from "./auth";
 
 const email = z.string().trim().email("Enter a valid email").max(200);
@@ -49,6 +50,7 @@ async function activeAdmins(db: DB, excludeId?: number) {
 export async function updateUser(db: DB, actorId: number, input: z.infer<typeof updateUserInput>) {
   const [u] = await db.select().from(users).where(eq(users.id, input.id));
   if (!u) throw new Error("User not found.");
+  if (demoMode() && isDemoEmail(u.email)) throw new Error("Demo accounts can't be changed, so every reviewer gets the same set-up.");
   const losingAdmin = u.role === "admin" && ((input.role && input.role !== "admin") || input.active === false);
   if (losingAdmin && (await activeAdmins(db, u.id)) === 0) throw new Error("There must always be at least one active admin.");
   if (input.id === actorId && input.active === false) throw new Error("You can't deactivate yourself.");
