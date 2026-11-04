@@ -20,7 +20,7 @@ export default async function UsersPage() {
   return (
     <div className="mx-auto max-w-4xl space-y-5">
       <div>
-        <h1 className="text-xl font-semibold text-ink">Users</h1>
+        <h1 className="font-display text-3xl font-medium tracking-tight text-ink">Users</h1>
         <p className="mt-1 text-sm text-gray-600">
           Add the people who use the planner. Give each a temporary password and ask them to change it under their name (top right).
         </p>

@@ -115,9 +115,9 @@ export default function Dashboard({
   return (
     <div className="space-y-5">
       {/* Run header */}
-      <div className="flex flex-wrap items-start justify-between gap-4">
+      <div id="recommendations" data-reveal className="flex scroll-mt-24 flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-xl font-semibold text-ink">Reorder recommendations</h1>
+          <h2 className="font-display text-2xl font-medium tracking-tight text-ink">Reorder recommendations</h2>
           <p className="mt-1 text-sm text-gray-600">
             Run #{run.id} · {fmtDate(run.createdAt)} · stock as of {run.asOfDate} · sales to {run.latestWeek}
             {run.isFestival && (
@@ -206,7 +206,7 @@ export default function Dashboard({
       )}
 
       {/* Summary tiles */}
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-6">
+      <div data-reveal className="grid grid-cols-2 gap-3 md:grid-cols-6">
         <Tile label="Reorder now" value={rows.filter((r) => r.action === "REORDER_NOW").length} tone="text-red-700" />
         <Tile
           label="Covered by open POs"
@@ -221,7 +221,7 @@ export default function Dashboard({
       </div>
 
       {/* Filters */}
-      <div className="flex flex-wrap items-center gap-3 rounded-xl border border-gray-200 bg-white p-3 text-sm">
+      <div data-reveal className="flex flex-wrap items-center gap-3 rounded-xl border border-gray-200 bg-white p-3 text-sm">
         <div className="inline-flex rounded-lg bg-gray-100 p-0.5">
           {(["flagged", "all"] as const).map((v) => (
             <button
@@ -248,7 +248,7 @@ export default function Dashboard({
       </div>
 
       {/* Table */}
-      <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white">
+      <div data-reveal className="overflow-x-auto rounded-xl border border-gray-200 bg-white">
         <table className="w-full min-w-[1100px] text-sm">
           <thead className="bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500">
             <tr>
@@ -286,9 +286,9 @@ export default function Dashboard({
 
 function Tile({ label, value, sub, tone = "text-ink" }: { label: string; value: string | number; sub?: string; tone?: string }) {
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-3">
+    <div className="card-lift rounded-xl border border-gray-200 bg-white p-3">
       <div className="text-xs text-gray-500">{label}</div>
-      <div className={`mt-1 text-2xl font-semibold ${tone}`}>{value}</div>
+      <div className={`mt-1 font-display text-3xl font-medium tabular-nums tracking-tight ${tone}`}>{value}</div>
       {sub && <div className="text-xs text-gray-500">{sub}</div>}
     </div>
   );
@@ -303,10 +303,10 @@ function Sparkline({ data }: { data: { week: string; units: number }[] }) {
   const pts = vals.map((v, i) => `${(i / (vals.length - 1)) * w},${h - 2 - ((v - min) / span) * (h - 4)}`);
   const last4Start = (Math.max(0, vals.length - 4) / (vals.length - 1)) * w;
   return (
-    <svg width={w} height={h} className="overflow-visible" role="img" aria-label={`Weekly sales ${data[0].week} to ${data.at(-1)!.week}`}>
+    <svg width={w} height={h} className="overflow-visible text-ink" role="img" aria-label={`Weekly sales ${data[0].week} to ${data.at(-1)!.week}`}>
       <title>{data.map((d) => `${d.week}: ${d.units}`).join("\n")}</title>
       <rect x={last4Start} y={0} width={w - last4Start} height={h} className="fill-gray-100" />
-      <polyline points={pts.join(" ")} fill="none" stroke="#13294b" strokeWidth={1.5} />
+      <polyline points={pts.join(" ")} fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinejoin="round" />
     </svg>
   );
 }

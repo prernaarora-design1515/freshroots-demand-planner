@@ -12,7 +12,7 @@ export default async function LoginPage() {
   const none = (await userCount(db)) === 0;
   return (
     <div className="mx-auto mt-10 max-w-sm rounded-xl border border-gray-200 bg-white p-6">
-      <h1 className="text-lg font-semibold text-ink">Sign in</h1>
+      <h1 className="font-display text-2xl font-medium tracking-tight text-ink">Sign in</h1>
       <p className="mt-1 text-sm text-gray-600">Planners and admins sign in to approve orders. Anyone can view read-only.</p>
       {none ? (
         <p className="mt-4 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">

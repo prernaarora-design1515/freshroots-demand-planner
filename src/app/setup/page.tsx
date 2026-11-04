@@ -11,7 +11,7 @@ export default async function SetupPage() {
   const ready = setupCodeConfigured();
   return (
     <div className="mx-auto mt-10 max-w-md rounded-xl border border-gray-200 bg-white p-6">
-      <h1 className="text-lg font-semibold text-ink">Create the first admin</h1>
+      <h1 className="font-display text-2xl font-medium tracking-tight text-ink">Create the first admin</h1>
       <p className="mt-1 text-sm text-gray-600">
         One-time step. The admin then adds planners and viewers on the Users page. This page closes once a user exists.
       </p>

@@ -3,6 +3,7 @@ import { getDb } from "@/db";
 import { latestRun, listRuns, runDetail } from "@/lib/runs";
 import { REASON_CODES } from "@/lib/decisions";
 import Dashboard from "@/components/Dashboard";
+import Hero from "@/components/Hero";
 import LoadSampleButton from "@/components/LoadSampleButton";
 import { getConnection } from "@/lib/zoho/client";
 import { redirect } from "next/navigation";
@@ -34,7 +35,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ r
     const noUrl = msg.includes("DATABASE_URL");
     return (
       <div className="mx-auto mt-16 max-w-lg rounded-xl border border-gray-200 bg-white p-8">
-        <h1 className="text-lg font-semibold text-ink">{noUrl ? "Connect the database" : "Database not ready"}</h1>
+        <h1 className="font-display text-2xl font-medium tracking-tight text-ink">{noUrl ? "Connect the database" : "Database not ready"}</h1>
         {noUrl ? (
           <ol className="mt-3 list-decimal space-y-1.5 pl-5 text-sm text-gray-700">
             <li>In Vercel, open this project → <b>Storage</b> → connect a Neon database (this sets <code>DATABASE_URL</code>), or add <code>DATABASE_URL</code> under Settings → Environment Variables.</li>
@@ -55,7 +56,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ r
   if (!detail) {
     return (
       <div className="mx-auto mt-16 max-w-md rounded-xl border border-gray-200 bg-white p-8 text-center">
-        <h1 className="text-lg font-semibold text-ink">No runs yet</h1>
+        <h1 className="font-display text-2xl font-medium tracking-tight text-ink">No runs yet</h1>
         <p className="mt-2 text-sm text-gray-600">
           Load the Freshroots seed export (15 SKUs, 16 weeks) or upload your own SAP CSVs, then the rules run automatically.
         </p>
@@ -73,7 +74,26 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ r
     );
   }
 
+  const flaggedRows = detail.rows.filter((r) => r.action !== "NO_ACTION");
+  const asOf = new Date(`${detail.run.asOfDate}T00:00:00+05:30`).toLocaleDateString("en-IN", {
+    timeZone: "Asia/Kolkata",
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
   return (
+    <>
+    <Hero
+      runId={detail.run.id}
+      asOf={asOf}
+      isFestival={detail.run.isFestival}
+      reorder={detail.rows.filter((r) => r.action === "REORDER_NOW" || r.action === "REORDER").length}
+      covered={detail.rows.filter((r) => r.action === "COVERED").length}
+      awaiting={flaggedRows.filter((r) => !r.decision).length}
+      flagged={flaggedRows.length}
+      total={detail.rows.length}
+      canAct={canAct}
+    />
     <Dashboard
       detail={detail}
       runs={runs.map((r) => ({ id: r.id, createdAt: r.createdAt.toISOString(), flaggedCount: r.flaggedCount }))}
@@ -82,5 +102,6 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ r
       canAct={canAct}
       signedIn={Boolean(user)}
     />
+    </>
   );
 }

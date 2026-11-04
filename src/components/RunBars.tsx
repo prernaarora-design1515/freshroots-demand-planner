@@ -15,10 +15,10 @@ export default function RunBars({
   const y = (v: number) => padT + (h - padT - padB) * (1 - v / max);
   const showEvery = Math.ceil(data.length / 12);
   return (
-    <figure className="rounded-xl border border-gray-200 bg-white p-4">
+    <figure data-reveal className="card-lift rounded-xl border border-gray-200 bg-white p-4">
       <figcaption className="text-sm font-medium text-gray-900">{title}</figcaption>
-      <svg viewBox={`0 0 ${w} ${h}`} className="mt-2 w-full" role="img" aria-label={`${title}: ${data.map((d) => `${d.label} ${fmt(d.value)}`).join(", ")}`}>
-        <line x1={padL} x2={w - padL} y1={h - padB} y2={h - padB} stroke="#d1d5db" />
+      <svg viewBox={`0 0 ${w} ${h}`} className="mt-2 w-full text-ink" role="img" aria-label={`${title}: ${data.map((d) => `${d.label} ${fmt(d.value)}`).join(", ")}`}>
+        <line x1={padL} x2={w - padL} y1={h - padB} y2={h - padB} stroke="var(--color-gray-300)" />
         {data.map((d, i) => {
           const cx = padL + slot * i + slot / 2;
           const top = y(d.value);
@@ -28,7 +28,7 @@ export default function RunBars({
               <title>{`${d.label} (${d.sub}): ${fmt(d.value)}`}</title>
               {/* generous hit area */}
               <rect x={cx - slot / 2} y={padT} width={slot} height={h - padT - padB} fill="transparent" />
-              {barH > 0 && <path d={`M${cx - bw / 2},${h - padB} V${top + 4} q0,-4 4,-4 H${cx + bw / 2 - 4} q4,0 4,4 V${h - padB} Z`} fill="#13294b" />}
+              {barH > 0 && <path d={`M${cx - bw / 2},${h - padB} V${top + 4} q0,-4 4,-4 H${cx + bw / 2 - 4} q4,0 4,4 V${h - padB} Z`} fill="currentColor" className="transition-opacity duration-300 hover:opacity-75" />}
               {(i === data.length - 1 || i === 0) && (
                 <text x={cx} y={top - 5} textAnchor="middle" className="fill-gray-700 text-[10px]">{fmt(d.value)}</text>
               )}

@@ -53,7 +53,7 @@ export default async function ZohoPage({ searchParams }: { searchParams: Promise
   return (
     <div className="mx-auto max-w-3xl space-y-5">
       <div>
-        <h1 className="text-xl font-semibold text-ink">Zoho Inventory</h1>
+        <h1 className="font-display text-3xl font-medium tracking-tight text-ink">Zoho Inventory</h1>
         <p className="mt-1 text-sm text-gray-600">
           Approved reorder lines are sent to Zoho as <b>draft</b> purchase orders, one per supplier. Procurement reviews and issues them in Zoho.
         </p>

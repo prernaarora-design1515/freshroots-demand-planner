@@ -1,12 +1,268 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 @theme {
-  --color-ink: #13294b;
-  --color-paper: #f6f7f9;
-  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --color-ink: #121214;
+  --color-ink-2: #4a4a50;
+  --color-paper: #f4f4f2;
+  --color-paper-2: #e9e9e6;
+  --color-line: #1212141f;
+  --color-accent: #ff4f1f;
+  --color-accent-deep: #c2410c;
+  --font-sans: "Space Grotesk", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  --font-display: "Bricolage Grotesque", "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --ease-lens: cubic-bezier(0.23, 1, 0.32, 1);
 }
 
+/* ---------- Dark theme ----------
+   Remaps the palette variables that every Tailwind utility reads, so all
+   existing pages switch theme without touching their markup:
+   light tints (50–200) become dark tinted surfaces, text shades (500–900) get lighter. */
+.dark {
+  color-scheme: dark;
+  --color-ink: #f1f1ee;
+  --color-ink-2: #b6b6b1;
+  --color-paper: #0f0f11;
+  --color-paper-2: #18181b;
+  --color-line: #f1f1ee24;
+  --color-accent: #ff6a3d;
+  --color-accent-deep: #ff9a76;
+  --color-white: #17171a;
+
+  --color-gray-50: #1c1c20;
+  --color-gray-100: #26262b;
+  --color-gray-200: #2f2f35;
+  --color-gray-300: #3d3d44;
+  --color-gray-400: #6b6b73;
+  --color-gray-500: #9a9aa2;
+  --color-gray-600: #b6b6b1;
+  --color-gray-700: #cfcfca;
+  --color-gray-800: #e2e2de;
+  --color-gray-900: #f1f1ee;
+
+  --color-red-50: #2a1414;
+  --color-red-200: #5c2323;
+  --color-red-500: #ff4a4a;
+  --color-red-600: #ff6b6b;
+  --color-red-700: #ff8a8a;
+
+  --color-emerald-50: #0f2a1f;
+  --color-emerald-100: #123526;
+  --color-emerald-200: #1d4a37;
+  --color-emerald-500: #34d399;
+  --color-emerald-600: #2fbf86;
+  --color-emerald-700: #5fe0a9;
+  --color-emerald-800: #86ebc0;
+  --color-emerald-900: #b5f5d8;
+
+  --color-amber-50: #2a2110;
+  --color-amber-200: #5a4517;
+  --color-amber-700: #fbbf24;
+  --color-amber-800: #fcd34d;
+  --color-amber-900: #fde68a;
+
+  --color-blue-700: #93c5fd;
+  --color-orange-100: #3a2312;
+  --color-orange-700: #fdba74;
+  --color-rose-50: #2d1219;
+  --color-rose-700: #fda4af;
+
+  --color-sky-50: #0f2230;
+  --color-sky-200: #1e4058;
+  --color-sky-500: #38bdf8;
+  --color-sky-700: #7dd3fc;
+
+  --color-violet-50: #1f1830;
+  --color-violet-200: #3b2d5c;
+  --color-violet-700: #c4b5fd;
+  --color-violet-800: #ddd6fe;
+
+  --color-yellow-50: #29240f;
+  --color-yellow-800: #fde047;
+  --color-yellow-900: #fef08a;
+}
+
+html {
+  scroll-behavior: smooth;
+}
 body {
   background: var(--color-paper);
-  color: #1f2937;
+  color: var(--color-gray-800);
+  transition: background-color 0.35s var(--ease-lens), color 0.35s var(--ease-lens);
+}
+.dark body {
+  color: var(--color-gray-800);
+}
+input,
+select,
+textarea {
+  background-color: var(--color-white);
+  color: inherit;
+}
+::selection {
+  background: var(--color-accent);
+  color: #fff;
+}
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+/* ---------- Motion ---------- */
+
+/* Blur-up reveal. Only hidden when JS is running (html.js), so content never disappears without it. */
+.js [data-reveal] {
+  opacity: 0;
+  transform: translateY(14px);
+  filter: blur(8px);
+  transition:
+    opacity 0.8s var(--ease-lens),
+    transform 0.8s var(--ease-lens),
+    filter 0.8s var(--ease-lens);
+  transition-delay: calc(var(--d, 0) * 90ms);
+}
+.js [data-reveal].is-in {
+  opacity: 1;
+  transform: none;
+  filter: none;
+}
+
+/* Ticker */
+@keyframes ticker {
+  to {
+    transform: translateX(-50%);
+  }
+}
+.ticker-track {
+  animation: ticker 48s linear infinite;
+}
+.ticker:hover .ticker-track {
+  animation-play-state: paused;
+}
+
+/* Pill button: arrow circle turns 45° on hover */
+.pill-arrow {
+  transition: transform 0.5s var(--ease-lens);
+}
+.group:hover .pill-arrow,
+.group:focus-visible .pill-arrow {
+  transform: rotate(45deg);
+}
+
+/* Link underline that draws in from the left */
+.link-draw {
+  background-image: linear-gradient(currentColor, currentColor);
+  background-size: 0% 1px;
+  background-position: 0 100%;
+  background-repeat: no-repeat;
+  transition: background-size 0.45s var(--ease-lens), color 0.2s;
+  padding-bottom: 2px;
+}
+.link-draw:hover,
+.link-draw[aria-current="page"] {
+  background-size: 100% 1px;
+}
+
+/* Cards lift on hover */
+.card-lift {
+  transition:
+    transform 0.45s var(--ease-lens),
+    box-shadow 0.45s var(--ease-lens),
+    border-color 0.3s;
+}
+.card-lift:hover {
+  transform: translateY(-3px);
+  border-color: var(--color-gray-300);
+  box-shadow: 0 12px 30px -18px rgb(0 0 0 / 0.35);
+}
+
+/* Buttons press in */
+button:not(:disabled):active,
+a.press:active {
+  transform: scale(0.97);
+}
+button {
+  transition:
+    transform 0.15s var(--ease-lens),
+    background-color 0.2s,
+    color 0.2s,
+    border-color 0.2s;
+}
+
+/* Table rows */
+tbody tr {
+  transition: background-color 0.25s var(--ease-lens);
+}
+tbody tr:hover {
+  background-color: color-mix(in srgb, var(--color-gray-100) 55%, transparent);
+}
+
+/* Dotted grid + lens spotlight that follows the cursor (set by HeroLens) */
+.dot-grid {
+  background-image: radial-gradient(var(--color-line) 1px, transparent 1px);
+  background-size: 18px 18px;
+}
+.lens {
+  background: radial-gradient(
+    220px circle at var(--mx, 70%) var(--my, 40%),
+    color-mix(in srgb, var(--color-accent) 14%, transparent),
+    transparent 70%
+  );
+  transition: opacity 0.4s var(--ease-lens);
+}
+
+/* Ruler ticks down the left edge (decorative) */
+.ruler {
+  background-image:
+    repeating-linear-gradient(to bottom, var(--color-gray-400) 0 1px, transparent 1px 64px),
+    repeating-linear-gradient(to bottom, var(--color-gray-300) 0 1px, transparent 1px 8px);
+  background-size: 14px 100%, 7px 100%;
+  background-repeat: no-repeat;
+  opacity: 0.6;
+}
+
+/* Pulsing status dot */
+@keyframes pulse-dot {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-accent) 55%, transparent);
+  }
+  100% {
+    box-shadow: 0 0 0 8px transparent;
+  }
+}
+.live-dot {
+  animation: pulse-dot 1.8s var(--ease-lens) infinite;
+}
+
+/* Theme toggle icon swap */
+.theme-icon {
+  transition: transform 0.6s var(--ease-lens), opacity 0.3s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  .js [data-reveal] {
+    opacity: 1;
+    transform: none;
+    filter: none;
+    transition: none;
+  }
+  .ticker-track,
+  .live-dot {
+    animation: none;
+  }
+  .ticker {
+    overflow-x: auto;
+  }
+  .card-lift:hover {
+    transform: none;
+  }
+  .pill-arrow,
+  .theme-icon {
+    transition: none;
+  }
 }

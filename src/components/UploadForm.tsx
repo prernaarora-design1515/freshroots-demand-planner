@@ -38,7 +38,7 @@ export default function UploadForm() {
 
   return (
     <div className="mx-auto max-w-2xl">
-      <h1 className="text-xl font-semibold text-ink">Upload SAP export</h1>
+      <h1 className="font-display text-3xl font-medium tracking-tight text-ink">Upload SAP export</h1>
       <p className="mt-1 text-sm text-gray-600">
         Upload any of these files. Each file you upload replaces that table; files you leave empty keep their current data.
       </p>

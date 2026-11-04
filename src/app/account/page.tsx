@@ -10,7 +10,7 @@ export default async function AccountPage() {
   return (
     <div className="mx-auto mt-6 max-w-md space-y-5">
       <div className="rounded-xl border border-gray-200 bg-white p-6">
-        <h1 className="text-lg font-semibold text-ink">{user.name}</h1>
+        <h1 className="font-display text-2xl font-medium tracking-tight text-ink">{user.name}</h1>
         <p className="text-sm text-gray-600">{user.email}</p>
         <p className="mt-2 text-sm text-gray-700">
           Role: <b>{ROLES[user.role].label}</b> · {ROLES[user.role].can}

@@ -39,14 +39,14 @@ export default async function ResultsPage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="text-xl font-semibold text-ink">90-day results</h1>
+          <h1 className="font-display text-4xl font-medium tracking-tight text-ink">90-day results</h1>
           <p className="mt-1 text-sm text-gray-600">
             Measured from the first run ({new Date(r.start).toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata", day: "numeric", month: "short", year: "numeric" })}) against Deepa&apos;s baseline.
           </p>
         </div>
         <div className="w-64">
           <div className="flex justify-between text-xs text-gray-600"><span>Day {r.dayOfPlan} of {PLAN.days}</span><span>{r.runCount} runs</span></div>
-          <div className="mt-1 h-2 rounded-full bg-gray-100"><div className="h-2 rounded-full bg-ink" style={{ width: `${pct}%` }} /></div>
+          <div className="mt-1 h-2 rounded-full bg-gray-100"><div className="h-2 rounded-full bg-accent transition-[width] duration-1000" style={{ width: `${pct}%` }} /></div>
         </div>
       </div>
 
@@ -61,14 +61,14 @@ export default async function ResultsPage() {
         {r.scorecard.map((m) => {
           const st = STATUS[m.status as keyof typeof STATUS];
           return (
-            <div key={m.key} className="rounded-xl border border-gray-200 bg-white p-4">
+            <div key={m.key} data-reveal className="card-lift rounded-xl border border-gray-200 bg-white p-4">
               <div className="flex items-start justify-between gap-2">
                 <div className="text-sm text-gray-600">{m.label}</div>
                 <span className={`whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium ring-1 ${st.cls}`}>
                   <span aria-hidden>{st.icon}</span> {st.label}
                 </span>
               </div>
-              <div className="mt-1 text-2xl font-semibold text-ink">{m.value}</div>
+              <div className="mt-1 font-display text-3xl font-medium tracking-tight text-ink">{m.value}</div>
               <div className="text-xs text-gray-500">{m.detail}</div>
               <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs">
                 <dt className="text-gray-500">Before</dt><dd className="text-gray-700">{m.baseline}</dd>
