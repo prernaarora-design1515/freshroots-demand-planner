@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
-export default function LoadSampleButton({ variant = "primary" }: { variant?: "primary" | "secondary" }) {
+export default function LoadSampleButton({ variant = "primary", set = "seed", label }: { variant?: "primary" | "secondary"; set?: "seed" | "next-week"; label?: string }) {
   const router = useRouter();
   const [busy, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -11,7 +11,11 @@ export default function LoadSampleButton({ variant = "primary" }: { variant?: "p
   const load = () =>
     startTransition(async () => {
       setError(null);
-      const res = await fetch("/api/sample", { method: "POST" }).then((r) => r.json());
+      const res = await fetch("/api/sample", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ set }),
+      }).then((r) => r.json());
       if (!res.ok) return setError(res.error);
       router.push(`/?run=${res.run.id}`);
       router.refresh();
@@ -24,7 +28,7 @@ export default function LoadSampleButton({ variant = "primary" }: { variant?: "p
   return (
     <div>
       <button onClick={load} disabled={busy} className={`rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-50 ${cls}`}>
-        {busy ? "Loading sample data…" : "Load sample data"}
+        {busy ? "Loading…" : label ?? "Load sample data"}
       </button>
       {error && <p className="mt-2 text-sm text-red-700">{error}</p>}
     </div>

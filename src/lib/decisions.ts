@@ -52,6 +52,38 @@ export async function saveDecision(db: DB, input: DecisionInput, by: { id: numbe
   return row;
 }
 
+/** A line is routine when the rules alone settle it: no review reason and nothing near a threshold. */
+export const isRoutine = (r: { action: string; needsJudgment: boolean; borderline: string | null }) =>
+  ["REORDER_NOW", "REORDER", "COVERED", "PAUSE"].includes(r.action) && !r.needsJudgment && !r.borderline;
+
+/**
+ * Exception-first review: approves every undecided routine line of a run in one go,
+ * leaving only the exceptions (new launch, demand swing, conflicting flags, bad data,
+ * borderline) for the planner to look at one by one.
+ */
+export async function approveRoutine(db: DB, runId: number, by: { id: number; name: string }) {
+  const recs = await db.select().from(recommendations).where(eq(recommendations.runId, runId));
+  const decided = new Set(
+    recs.length ? (await db.select({ id: decisions.recommendationId }).from(decisions).where(inArray(decisions.recommendationId, recs.map((r) => r.id)))).map((d) => d.id) : [],
+  );
+  const lines = recs.filter((r) => isRoutine(r) && !decided.has(r.id));
+  if (!lines.length) return 0;
+  const rows = await db
+    .insert(decisions)
+    .values(lines.map((r) => ({
+      recommendationId: r.id,
+      status: "APPROVED",
+      finalQty: r.recommendedQty,
+      note: "Approved as routine (no exception)",
+      decidedBy: by.name,
+      decidedByUserId: by.id,
+      decidedAt: new Date(),
+    })))
+    .onConflictDoNothing()
+    .returning({ id: decisions.id });
+  return rows.length;
+}
+
 /** Lines already sent to Zoho are locked here; changes happen on the PO in Zoho. */
 async function assertNotSent(db: DB, recommendationId: number) {
   const [d] = await db.select().from(decisions).where(eq(decisions.recommendationId, recommendationId));

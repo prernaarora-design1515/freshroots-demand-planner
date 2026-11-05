@@ -124,3 +124,56 @@ describe("open purchase orders are netted off", () => {
     expect(a.every((r) => r.grossQty === r.recommendedQty)).toBe(true);
   });
 });
+
+describe("review triggers", () => {
+  const out = Object.fromEntries(evaluate(seedInput()).map((r) => [r.skuId, r]));
+  const weeks = (vals: number[]) => vals.map((u, i) => ({ skuId: "S", week: `2026-W${String(27 + i).padStart(2, "0")}`, unitsSold: u }));
+  const one = (o: Partial<Parameters<typeof evaluate>[0]> & { vals?: number[]; stock?: number | undefined; perish?: string; std?: number }) =>
+    evaluate({
+      skus: [{ skuId: "S", name: "S", perishability: o.perish ?? "Low", standardReorderQty: o.std ?? 100 }],
+      sales: weeks(o.vals ?? Array(16).fill(50)),
+      onHand: "stock" in o ? (o.stock === undefined ? {} : { S: o.stock }) : { S: 500 },
+      isFestival: false,
+    })[0];
+
+  it("seed: Mango's +40% week-on-week jump sends it to review, keeping the rules' qty", () => {
+    expect(out.SKU001.reviewReasons).toContain("Demand swing");
+    expect(out.SKU001.needsJudgment).toBe(true);
+    expect(out.SKU001).toMatchObject({ action: "REORDER_NOW", recommendedQty: 750 });
+    expect(out.SKU001.borderline).toMatch(/\+40% \(W38→W39\)/);
+  });
+
+  it("seed: only Mango swings; the other 14 have no review reasons", () => {
+    expect(Object.values(out).filter((r) => r.reviewReasons.length).map((r) => r.skuId)).toEqual(["SKU001"]);
+  });
+
+  it("an in-range SKU with a swing becomes REVIEW (qty 0)", () => {
+    const vals = [...Array(14).fill(50), 50, 80]; // +60% last week, cover 500/~52 ≈ 9.6 wks: in range
+    const r = one({ vals });
+    expect(r).toMatchObject({ action: "REVIEW", recommendedQty: 0, needsJudgment: true });
+    expect(r.reviewReasons).toEqual(["Demand swing"]);
+  });
+
+  it("swings older than the last 4 week-to-week moves are ignored", () => {
+    const vals = [50, 50, 90, ...Array(13).fill(50)];
+    expect(one({ vals }).reviewReasons).toEqual([]);
+  });
+
+  it("missing stock figure -> held at 0 for review, never treated as zero stock", () => {
+    const r = one({ stock: undefined });
+    expect(r).toMatchObject({ action: "REVIEW", recommendedQty: 0, reviewReasons: ["Missing or invalid data"] });
+    expect(r.ruleSummary).toMatch(/no stock figure/);
+  });
+
+  it("invalid perishability or reorder qty -> review", () => {
+    expect(one({ perish: "Medium" }).reviewReasons).toEqual(["Missing or invalid data"]);
+    expect(one({ std: 0 }).reviewReasons).toEqual(["Missing or invalid data"]);
+  });
+
+  it("new launch and conflicting flags carry their reason", () => {
+    expect(one({ vals: [50, 50, 50] }).reviewReasons).toEqual(["New launch"]);
+    const vals = [...Array(12).fill(10), 20, 20, 20, 20];
+    const r = one({ vals, stock: 1000 });
+    expect(r.reviewReasons).toContain("Conflicting flags");
+  });
+});

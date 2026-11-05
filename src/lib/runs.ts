@@ -76,6 +76,7 @@ export async function createRun(db: DB, opts: { withAi?: boolean; createdBy?: st
       unitCost: cost.get(r.skuId) ?? null,
       borderline: r.borderline,
       needsJudgment: r.needsJudgment,
+      reviewReasons: r.reviewReasons.length ? r.reviewReasons.join(",") : null,
       ruleSummary: r.ruleSummary,
     })),
   );
@@ -147,6 +148,7 @@ export async function runDetail(db: DB, runId: number) {
       return {
         ...r,
         flags: r.flags ? r.flags.split(",") : [],
+        reviewReasons: r.reviewReasons ? r.reviewReasons.split(",") : [],
         skuName: sku?.name ?? r.skuId,
         category: sku?.category ?? "",
         perishability: sku?.perishability ?? "",

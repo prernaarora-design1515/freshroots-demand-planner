@@ -24,6 +24,7 @@ export default function Hero({
   flagged,
   total,
   canAct,
+  nextRun,
 }: {
   runId: number;
   asOf: string;
@@ -34,6 +35,7 @@ export default function Hero({
   flagged: number;
   total: number;
   canAct: boolean;
+  nextRun: string;
 }) {
   const stats = [
     { n: reorder, label: "Reorder now", tone: "text-accent" },
@@ -48,6 +50,7 @@ export default function Hero({
             <span className="live-dot h-2 w-2 rounded-full bg-accent" />
             Run #{runId} · stock as of {asOf}
             {isFestival && <span className="rounded-full border border-line px-2 py-0.5 text-[11px]">festival month · +25%</span>}
+            <span className="rounded-full border border-line px-2 py-0.5 text-[11px]">next automatic run {nextRun}</span>
           </p>
           <h1 data-reveal style={{ "--d": 1 } as React.CSSProperties}
             className="mt-4 font-display text-[clamp(2.4rem,5.6vw,4.6rem)] font-medium leading-[0.95] tracking-[-0.035em] text-ink">

@@ -39,6 +39,7 @@ export async function explainWithGemini(
     weeks_of_cover: r.weeksOfCover,
     target_window_weeks: `${r.minWeeks}-${r.maxWeeks}`,
     borderline_notes: r.borderline,
+    review_reasons: r.reviewReasons,
   }));
 
   const call = (minimalThinking: boolean) => generateText({
@@ -57,6 +58,7 @@ export async function explainWithGemini(
       "and never recommend a different quantity. For each SKU write 1-2 short sentences in plain English: why it was flagged, " +
       "and, if borderline_notes is present, what Raghav should double-check (e.g. a competitor scheme, a one-off order). " +
       "If units_on_open_pos > 0, say the open POs were subtracted; action COVERED means open POs already cover it and nothing new is ordered. " +
+      "If review_reasons is not empty, say plainly why a planner must look (e.g. new launch, demand swing, missing data). " +
       "Only mention the festival uplift as a cause if borderline_notes says so; high demand compares raw sales without the uplift. " +
       "No preamble, no markdown.",
     prompt:

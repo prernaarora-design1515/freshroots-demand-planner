@@ -2,6 +2,16 @@ import type { DB } from "@/db";
 import { calendar, distributors, inventory, openPosCsv, skuSuppliers, skus, weeklySales } from "@/db/schema";
 import { FILES, parseCsv, toInt, type FileKey } from "./csv";
 
+function noDuplicates<T>(rows: T[] | undefined, key: (r: T) => string, file: string, what: string) {
+  if (!rows) return;
+  const seen = new Set<string>();
+  for (const [i, r] of rows.entries()) {
+    const k = key(r);
+    if (seen.has(k)) throw new Error(`${file} row ${i + 2}: duplicate ${what} (${k})`);
+    seen.add(k);
+  }
+}
+
 export type CsvBundle = Partial<Record<FileKey, string>>;
 
 const CHUNK = 500;
@@ -27,28 +37,33 @@ export async function ingest(db: DB, files: CsvBundle) {
     region: r.Region,
     status: r.Status,
   }));
-  const sku = parsed.sku_master?.map((r, i) => ({
-    skuId: r.SKU_ID,
-    name: r.SKU_Name,
-    category: r.Category,
-    perishability: r.Perishability,
-    standardReorderQty: toInt(r.Standard_Reorder_Qty, `sku_master row ${i + 2}`),
-    unitOfMeasure: r.Unit_of_Measure,
-    distributorId: r.Distributor_ID,
-  }));
-  const sales = parsed.weekly_sales?.map((r, i) => {
-    if (!/^\d{4}-W\d{2}$/.test(r.Week)) throw new Error(`weekly_sales row ${i + 2}: week "${r.Week}" must look like 2026-W42`);
-    return { skuId: r.SKU_ID, week: r.Week, unitsSold: toInt(r.Units_Sold, `weekly_sales row ${i + 2}`) };
-  });
-  const inv = parsed.current_inventory?.map((r, i) => {
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(r.As_Of_Date)) throw new Error(`current_inventory row ${i + 2}: date "${r.As_Of_Date}" must be YYYY-MM-DD`);
+  const sku = parsed.sku_master?.map((r, i) => {
+    if (!r.SKU_ID) throw new Error(`sku_master row ${i + 2}: SKU_ID is empty`);
     return {
       skuId: r.SKU_ID,
-      location: r.Location,
-      unitsOnHand: toInt(r.Units_On_Hand, `current_inventory row ${i + 2}`),
-      asOfDate: r.As_Of_Date,
+      name: r.SKU_Name,
+      category: r.Category,
+      perishability: r.Perishability, // anything other than High/Low is sent to review by the rules, not guessed
+      standardReorderQty: toInt(r.Standard_Reorder_Qty, `sku_master row ${i + 2}`),
+      unitOfMeasure: r.Unit_of_Measure,
+      distributorId: r.Distributor_ID,
     };
   });
+  noDuplicates(sku, (x) => x.skuId, "sku_master", "SKU");
+  const sales = parsed.weekly_sales?.map((r, i) => {
+    if (!/^\d{4}-W\d{2}$/.test(r.Week)) throw new Error(`weekly_sales row ${i + 2}: week "${r.Week}" must look like 2026-W42`);
+    const unitsSold = toInt(r.Units_Sold, `weekly_sales row ${i + 2}`);
+    if (unitsSold < 0) throw new Error(`weekly_sales row ${i + 2}: Units_Sold can't be negative`);
+    return { skuId: r.SKU_ID, week: r.Week, unitsSold };
+  });
+  noDuplicates(sales, (x) => `${x.skuId} ${x.week}`, "weekly_sales", "SKU + week");
+  const inv = parsed.current_inventory?.map((r, i) => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(r.As_Of_Date)) throw new Error(`current_inventory row ${i + 2}: date "${r.As_Of_Date}" must be YYYY-MM-DD`);
+    const unitsOnHand = toInt(r.Units_On_Hand, `current_inventory row ${i + 2}`);
+    if (unitsOnHand < 0) throw new Error(`current_inventory row ${i + 2}: Units_On_Hand can't be negative`);
+    return { skuId: r.SKU_ID, location: r.Location, unitsOnHand, asOfDate: r.As_Of_Date };
+  });
+  noDuplicates(inv, (x) => `${x.skuId} ${x.location}`, "current_inventory", "SKU + location");
   const cal = parsed.calendar?.map((r, i) => ({
     yearMonth: r.Year_Month,
     year: toInt(r.Year, `calendar row ${i + 2}`),

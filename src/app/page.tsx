@@ -4,6 +4,7 @@ import { latestRun, listRuns, runDetail } from "@/lib/runs";
 import { REASON_CODES } from "@/lib/decisions";
 import Dashboard from "@/components/Dashboard";
 import Hero from "@/components/Hero";
+import { fmtIst, nextScheduledRun } from "@/lib/schedule";
 import LoadSampleButton from "@/components/LoadSampleButton";
 import { getConnection } from "@/lib/zoho/client";
 import { redirect } from "next/navigation";
@@ -93,6 +94,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ r
       flagged={flaggedRows.length}
       total={detail.rows.length}
       canAct={canAct}
+      nextRun={fmtIst(nextScheduledRun())}
     />
     <Dashboard
       detail={detail}

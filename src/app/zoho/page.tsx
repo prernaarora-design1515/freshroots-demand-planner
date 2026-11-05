@@ -6,7 +6,7 @@ import { getDb } from "@/db";
 import { runOpenPos, runs, skuSuppliers, zohoPushes } from "@/db/schema";
 import { getConnection, isZohoConfigured, redirectUri, zohoConfig } from "@/lib/zoho/client";
 import ZohoActions from "@/components/ZohoActions";
-import { demoMode } from "@/lib/demo";
+import { zohoDisconnectAllowed } from "@/lib/accounts";
 
 export const dynamic = "force-dynamic";
 
@@ -80,7 +80,7 @@ export default async function ZohoPage({ searchParams }: { searchParams: Promise
         )}
         <div className="mt-4">
           {isAdmin ? (
-            <ZohoActions connected={!!conn} configured={configured} supplierCount={supplierCount} allowDisconnect={!demoMode()} />
+            <ZohoActions connected={!!conn} configured={configured} supplierCount={supplierCount} allowDisconnect={zohoDisconnectAllowed()} />
           ) : (
             <p className="text-xs text-gray-500">{user ? "Syncing suppliers and items is an admin task." : "Sign in as Admin to sync suppliers and items."}</p>
           )}

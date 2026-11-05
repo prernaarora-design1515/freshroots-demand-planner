@@ -58,9 +58,18 @@ export default function UploadForm() {
           {busy ? "Working…" : "Upload"}
         </button>
       </form>
-      <div className="mt-6 flex items-center justify-between gap-4 rounded-xl border border-dashed border-gray-300 bg-white p-5">
-        <p className="text-sm text-gray-600">No files handy? Reload the Freshroots seed export (replaces current data) and run the rules.</p>
-        <LoadSampleButton variant="secondary" />
+      <div className="mt-6 space-y-3 rounded-xl border border-dashed border-gray-300 bg-white p-5">
+        <p className="text-sm font-medium text-gray-900">No files handy? Use the sample exports (each replaces current data and runs the rules)</p>
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-gray-100 pt-3">
+          <p className="max-w-md text-sm text-gray-600"><b>Week 1</b> · the case&apos;s seed export: 15 SKUs, stock as of 19 Oct.</p>
+          <LoadSampleButton variant="secondary" label="Load week 1 (seed)" />
+        </div>
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-gray-100 pt-3">
+          <p className="max-w-md text-sm text-gray-600">
+            <b>Week 2</b> · one week later (26 Oct), illustrative: W43 sales, some orders arrived, a new launch (Kombucha) and a Diwali jump in Dark Chocolate. Shows a second cycle and moves the 90-day results.
+          </p>
+          <LoadSampleButton variant="secondary" set="next-week" label="Load week 2" />
+        </div>
       </div>
     </div>
   );

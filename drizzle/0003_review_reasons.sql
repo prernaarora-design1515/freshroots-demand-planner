@@ -1,0 +1,1 @@
+ALTER TABLE "recommendations" ADD COLUMN "review_reasons" text;

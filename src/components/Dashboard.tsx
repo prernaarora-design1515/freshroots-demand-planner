@@ -4,6 +4,11 @@ import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { DashboardRow, RunDetail } from "@/lib/runs";
 
+// Same rule as isRoutine() in lib/decisions.ts (kept client-side to avoid a server import).
+const isRoutine = (r: { action: string; needsJudgment: boolean; borderline: string | null }) =>
+  ["REORDER_NOW", "REORDER", "COVERED", "PAUSE"].includes(r.action) && !r.needsJudgment && !r.borderline;
+const isException = (r: DashboardRow) => r.action !== "NO_ACTION" && !isRoutine(r);
+
 type ReasonCodes = Record<string, string>;
 type RunSummary = { id: number; createdAt: string; flaggedCount: number };
 
@@ -51,7 +56,7 @@ export default function Dashboard({
 }) {
   const router = useRouter();
   const { run, rows } = detail;
-  const [view, setView] = useState<"flagged" | "all">("flagged");
+  const [view, setView] = useState<"flagged" | "exceptions" | "all">("flagged");
   const [distributor, setDistributor] = useState("");
   const [region, setRegion] = useState("");
   const [pendingOnly, setPendingOnly] = useState(false);
@@ -73,7 +78,7 @@ export default function Dashboard({
 
   const visible = rows.filter(
     (r) =>
-      (view === "all" || r.action !== "NO_ACTION") &&
+      (view === "all" || (view === "exceptions" ? isException(r) : r.action !== "NO_ACTION")) &&
       (!distributor || r.distributorName === distributor) &&
       (!region || r.region === region) &&
       (!pendingOnly || (!r.decision && r.action !== "NO_ACTION")),
@@ -86,6 +91,21 @@ export default function Dashboard({
       const json = await res.json();
       if (!json.ok) return setError(json.error);
       router.push(`/?run=${json.run.id}`);
+      router.refresh();
+    });
+
+  const exceptions = rows.filter(isException);
+  const routinePending = rows.filter((r) => isRoutine(r) && !r.decision).length;
+  const approveRoutine = () =>
+    startTransition(async () => {
+      setError(null);
+      const j = await fetch("/api/decisions/routine", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ runId: run.id }),
+      }).then((r) => r.json());
+      if (!j.ok) return setError(j.error);
+      setView("exceptions");
       router.refresh();
     });
 
@@ -215,7 +235,7 @@ export default function Dashboard({
           sub={openUnitsNetted ? `${openUnitsNetted.toLocaleString("en-IN")} units not re-ordered` : undefined}
         />
         <Tile label="Pause order" value={rows.filter((r) => r.action === "PAUSE").length} tone="text-sky-700" />
-        <Tile label="Needs review / borderline" value={rows.filter((r) => r.needsJudgment || r.borderline).length} tone="text-violet-700" />
+        <Tile label="Exceptions to review" value={exceptions.length} sub={exceptions.length ? `${exceptions.filter((r) => !r.decision).length} still open` : undefined} tone="text-violet-700" />
         <Tile label="Decided" value={`${decided} / ${flagged.length}`} sub={overrides ? `${overrides} override(s)` : undefined} />
         <Tile label="Units approved to order" value={unitsApproved.toLocaleString("en-IN")} />
       </div>
@@ -223,13 +243,13 @@ export default function Dashboard({
       {/* Filters */}
       <div data-reveal className="flex flex-wrap items-center gap-3 rounded-xl border border-gray-200 bg-white p-3 text-sm">
         <div className="inline-flex rounded-lg bg-gray-100 p-0.5">
-          {(["flagged", "all"] as const).map((v) => (
+          {(["flagged", "exceptions", "all"] as const).map((v) => (
             <button
               key={v}
               onClick={() => setView(v)}
               className={`rounded-md px-3 py-1.5 ${view === v ? "bg-white font-medium shadow-sm" : "text-gray-600"}`}
             >
-              {v === "flagged" ? `Flagged (${flagged.length})` : `All SKUs (${rows.length})`}
+              {v === "flagged" ? `Flagged (${flagged.length})` : v === "exceptions" ? `Exceptions (${exceptions.length})` : `All SKUs (${rows.length})`}
             </button>
           ))}
         </div>
@@ -241,6 +261,16 @@ export default function Dashboard({
           <option value="">All regions</option>
           {regions.map((r) => <option key={r}>{r}</option>)}
         </select>
+        {canAct && routinePending > 0 && (
+          <button
+            onClick={approveRoutine}
+            disabled={busy}
+            title="Approves every line the rules settle on their own (no review reason, nothing near a threshold). Exceptions stay for you."
+            className="ml-auto rounded-lg bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50 md:order-last"
+          >
+            Approve {routinePending} routine line{routinePending === 1 ? "" : "s"}
+          </button>
+        )}
         <label className="flex items-center gap-2 text-gray-700">
           <input type="checkbox" checked={pendingOnly} onChange={(e) => setPendingOnly(e.target.checked)} />
           Awaiting my decision
@@ -401,6 +431,13 @@ function Row({ r, reasonCodes, canAct }: { r: DashboardRow; reasonCodes: ReasonC
             <div className="text-emerald-800/80">
               {r.openPos.map((o) => `${o.poNumber} (${o.status}${o.source === "csv" ? ", CSV" : ""}) ${o.openQty}`).join(" · ")}
             </div>
+          </div>
+        )}
+        {r.reviewReasons.length > 0 && (
+          <div className="mt-1 flex flex-wrap gap-1">
+            {r.reviewReasons.map((x) => (
+              <span key={x} className="rounded-full bg-violet-50 px-1.5 py-0.5 text-[10px] font-medium text-violet-800 ring-1 ring-violet-200">Review: {x}</span>
+            ))}
           </div>
         )}
         <div className="mt-1 flex flex-wrap gap-1">

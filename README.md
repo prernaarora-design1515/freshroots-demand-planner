@@ -53,20 +53,45 @@ Seed-data result (19 Oct 2026, festival month): 7 of 15 SKUs flagged.
 
 These outcomes are asserted in `src/lib/rules.test.ts`.
 
-## Users and roles
+## Roles and sign-in
 
-| Role | Can |
-|---|---|
-| Signed out | View dashboard, 90-day results and Zoho status (read-only). Set `REQUIRE_LOGIN_TO_VIEW=true` to hide everything behind sign-in |
-| Viewer | The above, plus download the approved list |
-| Planner | Upload data, run the rules, approve / override / reject, send to Zoho |
-| Admin | Everything, plus the Users page and connecting / syncing / disconnecting Zoho |
+One click, no passwords: the sign-in page offers the three people from the brief, so reviewers can try every role without set-up.
 
-- **Demo mode (on by default):** the sign-in page offers one-click accounts with no password: Raghav Kulkarni (Planner), Deepa Nair (Admin) and Procurement (Viewer). So reviewers can try every role without any set-up. In demo mode the demo accounts can't be changed and Disconnect Zoho is turned off, so one reviewer can't break the app for the next. Set `DEMO_MODE=false` for real use.
-- **First admin (real use):** add `SETUP_CODE` (any secret phrase, 8+ characters) in Vercel, redeploy, open `/setup` and enter it with your name, email and password. `/setup` closes as soon as one user exists.
-- The admin adds people on **Users** with a temporary password; they change it under their name.
-- Every decision records who made it. If two planners act on the same line, the first decision stands until someone clicks Undo.
-- Passwords: scrypt with a random salt. Sessions: random token in an httpOnly cookie (14 days), only its hash stored. 5 wrong passwords lock the account for 15 minutes. Cross-site POSTs are rejected. Role changes, deactivation and password resets sign the user out.
+| Role | Who | Can |
+|---|---|---|
+| Signed out | anyone | View dashboard, 90-day results, rules and Zoho status (read-only). Set `REQUIRE_LOGIN_TO_VIEW=true` to hide everything behind sign-in |
+| Viewer | Procurement | The above, plus download the approved list |
+| Planner | Raghav Kulkarni | Upload data, run the rules, approve / override / reject (or approve all routine lines), send to Zoho |
+| Admin | Deepa Nair | Everything, plus syncing suppliers and SKUs to Zoho |
+
+- Every decision and Zoho send records who made it. If two people act on the same line, the first decision stands until someone clicks Undo.
+- Sessions: random token in an httpOnly cookie (14 days), only its hash stored. Cross-site POSTs are rejected.
+- Disconnect Zoho is off so the integration stays live for every reviewer (`ZOHO_ALLOW_DISCONNECT=true` turns it back on for an admin).
+
+## Exception-first review
+
+The brief says the rules cover 80–85% of decisions and Raghav handles the rest on judgment. So each flagged line is either:
+
+- **Routine**: the rules settle it (no review reason, nothing near a threshold). **Approve N routine lines** approves them all in one click, recorded as "Approved as routine".
+- **An exception**, shown under **Exceptions** with the reason:
+  - **New launch:** fewer than 12 weeks of history (held at 0)
+  - **Demand swing:** a week-on-week change above ±30% in the last 4 moves; stands in for unusual distributor behaviour (keeps the rules' qty)
+  - **Conflicting flags:** high demand while overstocked (held at 0)
+  - **Missing or invalid data:** no stock figure, no sales, perishability not High/Low, reorder qty ≤ 0 (held at 0, never guessed)
+  - **Borderline:** within 10% of a threshold, or a flag caused only by the festival uplift
+
+Everything is explained in the app at **/rules** (rules in order, flag-to-action table, review triggers, data checks, cadence, guardrails, assumptions) with live counts from the latest run.
+
+## Twice-weekly schedule
+
+`vercel.json` runs `/api/cron/run` every **Monday and Thursday at 6:00 am IST** (Vercel Cron). Each run re-reads open POs from Zoho and runs the rules on the latest uploaded export. The hero and ticker show the next run. Auth: `Bearer CRON_SECRET` if that variable is set, otherwise only Vercel's cron user agent; it never runs twice within 6 hours.
+
+## Sample data
+
+- **Week 1 (seed):** the case's export, stock as of 19 Oct 2026.
+- **Week 2 (illustrative):** one week later, stock as of 26 Oct; see `data/next_week/README.md`. It adds W43 sales, arrivals of run 1's quick orders, a new launch (Kombucha, SKU016) and a Diwali jump in Dark Chocolate (SKU014), so a second cycle and the 90-day results can be shown.
+
+Both are on **Upload data**.
 
 ## 90-day results (/results)
 
@@ -91,7 +116,7 @@ cp .env.example .env        # keeps DATABASE_URL=pglite:./.pglite (embedded Post
 npm run db:migrate
 npm run db:seed             # loads data/*.csv and creates run #1
 npm run dev                 # http://localhost:3000
-npm test                    # rules, netting, results and password tests
+npm test                    # rules, netting, review triggers, results and schedule tests
 ```
 
 ## Deploy (Neon + Vercel)
@@ -100,9 +125,8 @@ npm test                    # rules, netting, results and password tests
 2. In the Vercel project:
    - **Storage** → connect a Neon database. This sets `DATABASE_URL`; you can also add it by hand.
    - **Settings → Environment Variables** → add `GEMINI_API_KEY` (optional: `GEMINI_MODEL`, default `gemini-flash-latest`).
-   - Add `SETUP_CODE` for the first-admin setup.
 3. Redeploy. The build creates the tables.
-4. Open `/setup`, create the admin, then click **Load sample data** or upload your own CSVs.
+4. Sign in as Planner and load sample week 1 (Upload data), or upload your own CSVs.
 
 ## API
 
@@ -111,15 +135,15 @@ npm test                    # rules, netting, results and password tests
 | POST | `/api/upload` | multipart form with any of `weekly_sales`, `sku_master`, `distributor_master`, `current_inventory`, `calendar`, `sku_suppliers`, `open_purchase_orders`. Each file uploaded replaces its table (planner) |
 | GET / POST | `/api/runs` | list runs / read open POs and run the rules (+ Gemini) on the current data (planner) |
 | POST / DELETE | `/api/decisions` | approve, override (`finalQty` + `reasonCode`), or reject a recommendation / undo |
-| POST | `/api/sample` | load the bundled seed CSVs and run the rules |
+| POST | `/api/sample` | load sample week 1 (`{set:"seed"}`) or week 2 (`{set:"next-week"}`) and run the rules |
 | GET | `/api/runs/:id/export` | CSV of approved orders and approved pauses (with supplier and Zoho PO number) |
 | GET | `/api/zoho/connect`, `/api/zoho/callback` | Zoho OAuth connect flow (state cookie checked; only Zoho domains trusted) |
 | POST | `/api/zoho/sync` | create or link suppliers as Zoho vendors and SKUs as Zoho items |
 | POST | `/api/zoho/push` | send a run's approved lines to Zoho as draft POs, one per supplier |
 | POST | `/api/zoho/disconnect` | revoke and forget the Zoho connection (admin) |
-| POST | `/api/auth/login`, `/api/auth/logout`, `/api/auth/setup`, `/api/auth/demo` | sign in / out; first-admin setup with `SETUP_CODE`; one-click demo sign-in by role |
-| POST | `/api/account/password` | change your own password |
-| GET / POST / PATCH | `/api/users` | list, add, change role / deactivate / reset password (admin) |
+| POST | `/api/auth/signin`, `/api/auth/logout` | one-click sign-in as planner / admin / viewer; sign out |
+| POST | `/api/decisions/routine` | approve every undecided routine line of a run (planner) |
+| GET | `/api/cron/run` | the scheduled Mon/Thu run (Vercel Cron only) |
 
 ## Database (16 tables)
 
@@ -130,7 +154,7 @@ npm test                    # rules, netting, results and password tests
   - `decisions`: Raghav's approval or override, with a reason code and, once sent, the Zoho PO number (sent lines are locked). This feeds the override-rate metric.
   - `zoho_connection`, `zoho_map`, `zoho_pushes`: the Zoho OAuth connection, local-to-Zoho ID mapping, and send history
   - `open_pos_csv`, `run_open_pos`: uploaded open POs, and the open PO lines each run netted off
-  - `users`, `sessions`: accounts and sign-in sessions
+  - `users`, `sessions`: the three role accounts and their sign-in sessions
 
 ## Zoho Inventory setup
 
@@ -143,8 +167,7 @@ npm test                    # rules, netting, results and password tests
 
 ## Known gaps / future state
 
-- The twice-weekly run is manual (upload + Re-run). Next: Vercel Cron Mon/Thu 6 am fed by an automated SAP export.
+- The scheduled run uses the latest *uploaded* export. Next: an automated SAP export dropped where the scheduled run can pick it up.
 - Open-PO netting ignores arrival dates: a PO due after the stockout still counts. Next: compare each PO's expected date with weeks of cover.
 - Exposure on the results page is a cost-based proxy; actual lost sales and write-offs come from finance at day 90.
-- No email invites or self-service password reset (an admin resets passwords).
 - AI anomaly detection, once 3 years of history is loaded.

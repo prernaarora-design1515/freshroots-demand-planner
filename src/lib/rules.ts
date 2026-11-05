@@ -22,6 +22,8 @@ export const RULES = {
   highPerish: { minWeeks: 3, maxWeeks: 4 },
   borderlineBand: 0.1, // within 10% of a threshold counts as borderline
   minHistoryWeeks: 12,
+  swingPct: 0.3, // a week-on-week change above ±30%...
+  swingTransitions: 4, // ...in the last 4 week-to-week moves -> planner review
 } as const;
 
 export type Flag = "HIGH_DEMAND" | "STOCKOUT_RISK" | "OVERSTOCK_RISK";
@@ -63,6 +65,7 @@ export interface SkuResult {
   recommendedQty: number; // what to order now = max(0, gross - open POs)
   borderline: string | null;
   needsJudgment: boolean;
+  reviewReasons: string[]; // why a planner must look: New launch, Demand swing, Conflicting flags, Missing or invalid data
   ruleSummary: string;
 }
 
@@ -79,10 +82,10 @@ export function evaluate(input: EvaluateInput): SkuResult[] {
   }
 
   return input.skus.map((sku) => {
-    const history = (byS.get(sku.skuId) ?? [])
-      .slice()
-      .sort((a, b) => a.week.localeCompare(b.week))
-      .map((s) => s.unitsSold);
+    const sorted = (byS.get(sku.skuId) ?? []).slice().sort((a, b) => a.week.localeCompare(b.week));
+    const history = sorted.map((s) => s.unitsSold);
+    const weeks = sorted.map((s) => s.week.slice(5));
+    const stockKnown = input.onHand[sku.skuId] !== undefined;
     const onHand = input.onHand[sku.skuId] ?? 0;
     const openPoQty = Math.max(0, Math.round(input.openPo?.[sku.skuId] ?? 0));
     const isHigh = sku.perishability.toLowerCase() === "high";
@@ -112,6 +115,26 @@ export function evaluate(input: EvaluateInput): SkuResult[] {
       coverWithOpenPo: expected > 0 ? round1((onHand + openPoQty) / expected) : 999,
     };
 
+    // Missing or invalid data: never guess. Hold at 0 and ask the planner.
+    const dataProblems: string[] = [];
+    if (!stockKnown) dataProblems.push("no stock figure in current_inventory");
+    if (!["high", "low"].includes(sku.perishability.toLowerCase())) dataProblems.push(`perishability "${sku.perishability}" is not High or Low`);
+    if (!(sku.standardReorderQty > 0)) dataProblems.push("standard reorder qty is missing or 0");
+    if (!history.length) dataProblems.push("no sales history");
+    if (dataProblems.length) {
+      return {
+        ...base,
+        flags: [],
+        action: "REVIEW",
+        grossQty: 0,
+        recommendedQty: 0,
+        borderline: null,
+        needsJudgment: true,
+        reviewReasons: ["Missing or invalid data"],
+        ruleSummary: `Data problem: ${dataProblems.join("; ")}. Held at 0 instead of guessing; fix the data or decide manually.`,
+      };
+    }
+
     // New launches / thin history: the rules can't be trusted -> Raghav decides.
     if (history.length < RULES.minHistoryWeeks) {
       return {
@@ -122,6 +145,7 @@ export function evaluate(input: EvaluateInput): SkuResult[] {
         recommendedQty: 0,
         borderline: null,
         needsJudgment: true,
+        reviewReasons: ["New launch"],
         ruleSummary:
           `Only ${history.length} week(s) of sales history (rules need ${RULES.minHistoryWeeks}). Treat as a new launch: planner judgment required.` +
           (openPoQty ? ` ${openPoQty} units already on open POs.` : ""),
@@ -137,6 +161,7 @@ export function evaluate(input: EvaluateInput): SkuResult[] {
     let action: Action = "NO_ACTION";
     let qty = 0;
     let needsJudgment = false;
+    const reviewReasons: string[] = [];
     const std = sku.standardReorderQty;
     const hd = flags.includes("HIGH_DEMAND");
     if (flags.includes("STOCKOUT_RISK")) {
@@ -145,6 +170,7 @@ export function evaluate(input: EvaluateInput): SkuResult[] {
     } else if (flags.includes("OVERSTOCK_RISK") && hd) {
       action = "REVIEW"; // demand is rising but stock is high: conflicting signals
       needsJudgment = true;
+      reviewReasons.push("Conflicting flags");
     } else if (flags.includes("OVERSTOCK_RISK")) {
       action = "PAUSE";
     } else if (hd) {
@@ -168,6 +194,20 @@ export function evaluate(input: EvaluateInput): SkuResult[] {
       if (flags.includes("OVERSTOCK_RISK") !== overNoUplift)
         notes.push(`overstock flag changes with the festival uplift (${round1(wocNoUplift)} weeks without it)`);
     }
+    // Unusual swing (stand-in for unusual distributor behaviour: one distributor per SKU).
+    const swings: string[] = [];
+    for (let i = Math.max(1, history.length - RULES.swingTransitions); i < history.length; i++) {
+      const prev = history[i - 1];
+      if (prev > 0 && Math.abs(history[i] / prev - 1) > RULES.swingPct)
+        swings.push(`${history[i] > prev ? "+" : ""}${Math.round((history[i] / prev - 1) * 100)}% (${weeks[i - 1]}→${weeks[i]})`);
+    }
+    if (swings.length) {
+      needsJudgment = true;
+      if (action === "NO_ACTION") action = "REVIEW"; // in range, but the swing needs a human look
+      reviewReasons.push("Demand swing");
+      notes.push(`weekly sales swung ${swings.join(", ")}: check for a distributor event, scheme or one-off order before approving`);
+    }
+
     // Net open purchase orders off the order quantity.
     const grossQty = qty;
     const ruleAction = action;
@@ -188,6 +228,7 @@ export function evaluate(input: EvaluateInput): SkuResult[] {
       recommendedQty: netQty,
       borderline,
       needsJudgment,
+      reviewReasons,
       ruleSummary:
         summarise(base, flags, ruleAction, grossQty, std, input.isFestival, isHigh) +
         netNote(grossQty, openPoQty, netQty, action, base.coverWithOpenPo),

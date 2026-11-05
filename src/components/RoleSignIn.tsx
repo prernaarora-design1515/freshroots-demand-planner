@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 
 type Acct = { role: "planner" | "admin" | "viewer"; name: string; title: string; blurb: string; label: string };
 
-export default function DemoSignIn({ accounts }: { accounts: Acct[] }) {
+export default function RoleSignIn({ accounts }: { accounts: Acct[] }) {
   const router = useRouter();
   const [busy, start] = useTransition();
   const [which, setWhich] = useState<string | null>(null);
@@ -15,7 +15,7 @@ export default function DemoSignIn({ accounts }: { accounts: Acct[] }) {
     setWhich(role);
     start(async () => {
       setErr(null);
-      const j = await fetch("/api/auth/demo", {
+      const j = await fetch("/api/auth/signin", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ role }),

@@ -2,6 +2,7 @@ import { asc, desc, eq, inArray } from "drizzle-orm";
 import type { DB } from "@/db";
 import { decisions, recommendations, runs } from "@/db/schema";
 import { getConnection } from "./zoho/client";
+import { fmtIst, nextScheduledRun } from "./schedule";
 
 export type TickerItem = { label: string; value: string; tone?: "alert" | "good" | "muted" };
 
@@ -38,6 +39,7 @@ export async function tickerItems(db: DB): Promise<TickerItem[]> {
     ];
     if (run.isFestival) items.push({ label: "Festival month", value: "+25% demand" });
     items.push({ label: "Zoho", value: zoho ? "connected" : "not connected", tone: zoho ? "good" : "muted" });
+    items.push({ label: "Next automatic run", value: fmtIst(nextScheduledRun()) });
     items.push({ label: "Pilot", value: `day ${day} of 90` });
     return items;
   } catch {

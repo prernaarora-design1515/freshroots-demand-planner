@@ -94,6 +94,7 @@ export const recommendations = pgTable("recommendations", {
   unitCost: real("unit_cost"), // snapshot from sku_suppliers, for the results page
   borderline: text("borderline"), // deterministic note on near-threshold cases
   needsJudgment: boolean("needs_judgment").notNull().default(false),
+  reviewReasons: text("review_reasons"), // comma-separated: New launch, Demand swing, Conflicting flags, Missing or invalid data
   ruleSummary: text("rule_summary").notNull(), // template explanation, always present
   aiExplanation: text("ai_explanation"), // Gemini text, may be null
 });

@@ -1,6 +1,5 @@
-import { createHash, randomBytes, scrypt as scryptCb, timingSafeEqual } from "node:crypto";
-import { promisify } from "node:util";
-import { and, eq, gt, lt, sql } from "drizzle-orm";
+import { createHash, randomBytes } from "node:crypto";
+import { and, eq, gt, lt } from "drizzle-orm";
 import { cookies, headers } from "next/headers";
 import { NextResponse } from "next/server";
 import type { DB } from "@/db";
@@ -8,28 +7,23 @@ import { getDb } from "@/db";
 import { sessions, users } from "@/db/schema";
 
 /**
- * Small, dependency-free auth for a handful of internal users.
- *  - Passwords: scrypt (N=16384, r=8, p=1) with a random 16-byte salt.
+ * Sign-in for the three Freshroots roles (see accounts.ts): one click, no passwords.
  *  - Sessions: random 32-byte token in an httpOnly cookie; only its SHA-256 is stored.
  *  - Roles: viewer < planner < admin. Signed-out visitors get read-only access
  *    unless REQUIRE_LOGIN_TO_VIEW=true.
+ *  - Every decision and Zoho send records who made it.
  */
-
-const scrypt = promisify(scryptCb) as (pw: string, salt: Buffer, len: number, opts: object) => Promise<Buffer>;
 
 export const ROLES = {
   viewer: { rank: 1, label: "Viewer", can: "View dashboard, results and Zoho status" },
   planner: { rank: 2, label: "Planner", can: "Upload data, run rules, approve/override/reject, send to Zoho" },
-  admin: { rank: 3, label: "Admin", can: "Everything, plus users and the Zoho connection" },
+  admin: { rank: 3, label: "Admin", can: "Everything, plus syncing suppliers and items to Zoho" },
 } as const;
 export type Role = keyof typeof ROLES;
 export const isRole = (r: unknown): r is Role => typeof r === "string" && r in ROLES;
 
 export const SESSION_COOKIE = "fr_session";
 const SESSION_DAYS = 14;
-const MAX_FAILED = 5;
-const LOCK_MINUTES = 15;
-export const MIN_PASSWORD = 10;
 
 export interface SessionUser {
   id: number;
@@ -37,34 +31,6 @@ export interface SessionUser {
   email: string;
   role: Role;
 }
-
-/* ---------- passwords ---------- */
-
-export async function hashPassword(password: string): Promise<string> {
-  const salt = randomBytes(16);
-  const hash = await scrypt(password, salt, 64, { N: 16384, r: 8, p: 1 });
-  return `scrypt$16384$8$1$${salt.toString("base64")}$${hash.toString("base64")}`;
-}
-
-export async function verifyPassword(password: string, stored: string): Promise<boolean> {
-  const [alg, n, r, p, saltB64, hashB64] = stored.split("$");
-  if (alg !== "scrypt" || !saltB64 || !hashB64) return false;
-  const expected = Buffer.from(hashB64, "base64");
-  const got = await scrypt(password, Buffer.from(saltB64, "base64"), expected.length, {
-    N: Number(n),
-    r: Number(r),
-    p: Number(p),
-  });
-  return got.length === expected.length && timingSafeEqual(got, expected);
-}
-
-export function passwordProblem(pw: unknown): string | null {
-  if (typeof pw !== "string" || pw.length < MIN_PASSWORD) return `Password must be at least ${MIN_PASSWORD} characters.`;
-  if (pw.length > 200) return "Password is too long.";
-  return null;
-}
-
-export const normEmail = (e: string) => e.trim().toLowerCase();
 
 /* ---------- sessions ---------- */
 
@@ -82,7 +48,7 @@ export async function startSession(db: DB, userId: number) {
   const token = randomBytes(32).toString("base64url");
   const expiresAt = new Date(Date.now() + SESSION_DAYS * 86_400_000);
   await db.insert(sessions).values({ id: tokenId(token), userId, expiresAt });
-  await db.update(users).set({ lastLoginAt: new Date(), failedLogins: 0, lockedUntil: null }).where(eq(users.id, userId));
+  await db.update(users).set({ lastLoginAt: new Date() }).where(eq(users.id, userId));
   // Housekeeping: drop expired sessions.
   await db.delete(sessions).where(lt(sessions.expiresAt, new Date()));
   (await cookies()).set(SESSION_COOKIE, token, {
@@ -120,40 +86,6 @@ export async function currentUser(db?: DB): Promise<SessionUser | null> {
 }
 
 export const hasRole = (u: SessionUser | null, min: Role) => Boolean(u && ROLES[u.role].rank >= ROLES[min].rank);
-
-export async function userCount(db: DB) {
-  try {
-    const [r] = await db.select({ n: sql<number>`count(*)::int` }).from(users);
-    return Number(r?.n ?? 0);
-  } catch {
-    return 0;
-  }
-}
-
-/* ---------- login ---------- */
-
-export async function login(db: DB, emailRaw: string, password: string): Promise<{ ok: true; user: SessionUser } | { ok: false; error: string }> {
-  const generic = { ok: false as const, error: "Wrong email or password." };
-  const [u] = await db.select().from(users).where(eq(users.email, normEmail(emailRaw)));
-  if (!u) {
-    await hashPassword(password); // similar timing whether or not the user exists
-    return generic;
-  }
-  if (u.lockedUntil && u.lockedUntil.getTime() > Date.now())
-    return { ok: false, error: `Too many attempts. Try again after ${u.lockedUntil.toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit" })}.` };
-  if (!(await verifyPassword(password, u.passwordHash))) {
-    const failed = u.failedLogins + 1;
-    await db
-      .update(users)
-      .set({ failedLogins: failed >= MAX_FAILED ? 0 : failed, lockedUntil: failed >= MAX_FAILED ? new Date(Date.now() + LOCK_MINUTES * 60_000) : null })
-      .where(eq(users.id, u.id));
-    return generic;
-  }
-  if (!u.active) return { ok: false, error: "This account is deactivated. Ask an admin." };
-  if (!isRole(u.role)) return generic;
-  await startSession(db, u.id);
-  return { ok: true, user: { id: u.id, name: u.name, email: u.email, role: u.role } };
-}
 
 /* ---------- guards for API routes ---------- */
 
