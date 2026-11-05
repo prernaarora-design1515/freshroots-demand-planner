@@ -1,5 +1,5 @@
-# One-time helper: unpacks freshroots-project.zip (uploaded through the GitHub web UI) into the repo.
-# After the first run it does nothing; you can delete this file.
+# Unpacks freshroots-project.zip (uploaded through the GitHub web UI) into the repo, mirroring it:
+# files missing from the zip are deleted too. Does nothing when no zip is present.
 name: Unpack project
 on: push
 permissions:
@@ -9,11 +9,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Unpack and commit
+      - name: Unpack, mirror and commit
         run: |
           if [ ! -f freshroots-project.zip ]; then echo "Nothing to unpack"; exit 0; fi
-          unzip -o freshroots-project.zip -d .
+          mkdir -p "$RUNNER_TEMP/src"
+          unzip -q freshroots-project.zip -d "$RUNNER_TEMP/src"
           rm freshroots-project.zip
+          rsync -a --delete --exclude '.git/' --exclude '.github/' "$RUNNER_TEMP/src/" ./
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
